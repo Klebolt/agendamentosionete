@@ -60,7 +60,7 @@ const app = {
 
 
             <div class="profile-container">
-                        <img src="img/IMAGEM_PROFISSIONAL_LOGINN.png" alt="Psi. Ionete" class="profile-image">
+                        <img src="img/IMAGEM_PROFISSIONAL_LOGINN.jpeg" alt="Psi. Ionete" class="profile-image">
                         <h2 class="profile-title">Psy.Ionete</h2>
                         <p class="profile-subtitle">Psicóloga Clínica | CRP 06/226283</p>
                         <p class="profile-subtitle">Abordagem Sistêmica<br>Acompanhamento Piscológico e Terapêutico</p>
