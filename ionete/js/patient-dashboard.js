@@ -105,6 +105,11 @@ const patientApp = {
         const formattedDate = appDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
         const formattedTime = appDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
+        // CIRURGIA: Lê o link dinâmico salvo pela Dra. Ionete no painel de Configuração
+        const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {};
+        // Tenta ler os nomes mais comuns que você pode ter usado no admin-dashboard.js, se não achar, usa o do config.js
+        const dynamicMeetUrl = settings.meetUrl || settings.meetingLink || settings.meetLink || CONFIG.MEET_URL;
+
         return `
             <div class="bg-teal-50 border border-teal-100 rounded-2xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div class="text-center sm:text-left">
@@ -119,7 +124,7 @@ const patientApp = {
                     <button onclick="patientApp.cancelAppointment('${nextApp.id}', '${nextApp.date}')" class="flex-1 sm:flex-none justify-center px-6 py-4 text-sm font-bold text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-xl transition-all">
                         Cancelar Consulta
                     </button>
-                    <a href="${CONFIG.MEET_URL}" target="_blank" rel="noopener noreferrer" 
+                    <a href="${dynamicMeetUrl}" target="_blank" rel="noopener noreferrer" 
                        class="flex-1 sm:flex-none inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5">
                         <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         Entrar na Sala Virtual
