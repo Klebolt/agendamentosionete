@@ -13,7 +13,7 @@ const CONFIG = {
     SUPABASE_KEY: "sb_publishable_LsQWAfJKOn3e_W1BT0aJng_TLloj0eZ",
 
     // Link fixo do Google Meet para as sessões
-    MEET_URL: "https://meet.google.com/abc-defg-hij",
+    MEET_URL: "https://meet.google.com/csa-svrp-gqq",
 
     // Configurações de exibição e UX
     SYSTEM_NAME: "Psi.Ionete",
