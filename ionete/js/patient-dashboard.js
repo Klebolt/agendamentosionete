@@ -287,10 +287,19 @@ const patientApp = {
                         const timeStr = `${h}:${m}`;
                         const fullDateTime = `${dateStr}T${timeStr}:00`;
 
-                        // TRAVA DE SEGURANÇA: Evita quebra de grid se o banco retornar data vazia
+                        // CIRURGIA MÁXIMA: Transformamos a data do botão em Timestamp matemático
+                        const btnTimestamp = new Date(fullDateTime).getTime();
+
                         const isBooked = allAppointments.some(a => {
                             if (!a || !a.date) return false;
-                            return a.date.includes(`${dateStr}T${timeStr}`) && (!a.status || a.status === 'SCHEDULED');
+                            
+                            // Transforma a data que veio do banco em Timestamp matemático
+                            const dbTimestamp = new Date(a.date).getTime();
+                            
+                            // A data está bloqueada se a matemática bater OU se o texto cru bater
+                            const isSameSlot = (dbTimestamp === btnTimestamp) || a.date.includes(`${dateStr}T${timeStr}`);
+
+                            return isSameSlot && (!a.status || a.status === 'SCHEDULED');
                         });
 
                         if (isHoliday || isBooked) {
