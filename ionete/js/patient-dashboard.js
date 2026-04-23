@@ -166,7 +166,6 @@ const patientApp = {
         `;
     },
 
-    // AQUI: Tornou-se async e busca o contato e cancela via Supabase
     async cancelAppointment(appId, appDateStr) {
         const now = new Date();
         const appointmentTime = new Date(appDateStr);
@@ -236,7 +235,9 @@ const patientApp = {
 
         const patientBookedDates = patientAppointments
             .filter(a => !a.status || a.status === 'SCHEDULED')
-            .map(a => a.date.split('T')[0]);
+            .map(a => {
+                return a.date ? a.date.split('T')[0] : '';
+            });
 
         const timeToMins = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
         const startMin = timeToMins(settings.startTime);
@@ -257,20 +258,20 @@ const patientApp = {
                 const displayDate = cursor.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }).toUpperCase();
 
                 html += `
-                    <div>
-                        <div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-4">
-                            <h4 class="text-xs font-bold text-slate-400 tracking-widest">${displayDate}</h4>
-                            ${isHoliday ? '<span class="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">FERIADO / BLOQUEADO</span>' : ''}
-                        </div>
-                `;
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-4">
+                            <h4 class="text-xs font-bold text-slate-400 tracking-widest">${displayDate}</h4>
+                            ${isHoliday ? '<span class="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">FERIADO / BLOQUEADO</span>' : ''}
+                        </div>
+                `;
 
                 if (hasBookingThisDay) {
                     html += `
-                        <div class="bg-sky-50 border border-sky-100 rounded-xl p-4 text-center">
-                            <p class="text-xs font-bold text-sky-700">Você já possui uma sessão agendada para este dia.</p>
-                        </div>
-                    </div>
-                    `;
+                        <div class="bg-sky-50 border border-sky-100 rounded-xl p-4 text-center">
+                            <p class="text-xs font-bold text-sky-700">Você já possui uma sessão agendada para este dia.</p>
+                        </div>
+                    </div>
+                    `;
                 } else {
                     html += `<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">`;
 
@@ -286,25 +287,27 @@ const patientApp = {
                         const timeStr = `${h}:${m}`;
                         const fullDateTime = `${dateStr}T${timeStr}:00`;
 
-                        // CIRURGIA: Usando startsWith para alinhar os formatos de hora
-                        const checkStr = `${dateStr}T${timeStr}`;
-                        const isBooked = allAppointments.some(a => a.date.startsWith(checkStr) && (!a.status || a.status === 'SCHEDULED'));
+                        // TRAVA DE SEGURANÇA: Evita quebra de grid se o banco retornar data vazia
+                        const isBooked = allAppointments.some(a => {
+                            if (!a || !a.date) return false;
+                            return a.date.includes(`${dateStr}T${timeStr}`) && (!a.status || a.status === 'SCHEDULED');
+                        });
 
                         if (isHoliday || isBooked) {
                             const reason = isHoliday ? 'Feriado' : 'Ocupado';
                             html += `
-                                <button onclick="app.showNotification('${reason}', 'Este horário não está disponível para agendamento.', true)" 
-                                    class="py-2 text-xs font-bold text-red-400 bg-red-50 border border-red-100 rounded-lg cursor-not-allowed opacity-70">
-                                    ${isHoliday ? 'BLOQUEADO' : timeStr}
-                                </button>
-                            `;
+                                <button onclick="app.showNotification('${reason}', 'Este horário não está disponível para agendamento.', true)" 
+                                    class="py-2 text-xs font-bold text-red-400 bg-red-50 border border-red-100 rounded-lg cursor-not-allowed opacity-70">
+                                    ${isHoliday ? 'BLOQUEADO' : timeStr}
+                                </button>
+                            `;
                         } else {
                             html += `
-                                <button data-date="${fullDateTime}" 
-                                    class="btn-book py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-teal-500 hover:text-teal-600 transition-all">
-                                    ${timeStr}
-                                </button>
-                            `;
+                                <button data-date="${fullDateTime}" 
+                                    class="btn-book py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-teal-500 hover:text-teal-600 transition-all">
+                                    ${timeStr}
+                                </button>
+                            `;
                         }
                         currentMin += step;
                     }
@@ -344,7 +347,6 @@ const patientApp = {
         }).join('');
     },
 
-    // AQUI: Validando pelo banco passado no renderDashboard e criando no Supabase
     attachBookingListeners(patientId, patientAppointments) {
         document.querySelectorAll('.btn-book').forEach(btn => {
             btn.addEventListener('click', async (e) => {
@@ -387,9 +389,6 @@ const patientApp = {
         }, 60000);
     },
 
-    // ==========================================
-    // 👤 MODAL MINHA CONTA (Perfil do Usuário)
-    // ==========================================
     openProfileModal() {
         const fullUser = authService.getCurrentUser();
 
@@ -435,7 +434,6 @@ const patientApp = {
         });
     },
 
-    // AQUI: Salva os dados oficiais na nuvem
     async saveProfile(userId) {
         const newPhone = document.getElementById('edit-phone').value;
         const newPassword = document.getElementById('edit-password').value;
@@ -446,7 +444,6 @@ const patientApp = {
         }
 
         try {
-            // 1. Atualiza a senha no cofre de Autenticação (se o usuário preencheu)
             if (newPassword.trim().length > 0) {
                 if (newPassword.trim().length < 6) {
                     app.showNotification("Atenção", "A nova senha deve ter pelo menos 6 caracteres.", true);
@@ -456,7 +453,6 @@ const patientApp = {
                 if (authError) throw authError;
             }
 
-            // 2. Atualiza o telefone na tabela pública de Perfis
             const { error: profileError } = await window.supabaseClient
                 .from('profiles')
                 .update({ phone: newPhone })
@@ -464,7 +460,6 @@ const patientApp = {
 
             if (profileError) throw profileError;
 
-            // 3. Atualiza o cache local para a tela não ficar desatualizada
             const user = authService.getCurrentUser();
             user.phone = newPhone;
             localStorage.setItem('sensus_current_user', JSON.stringify(user));
