@@ -9,7 +9,7 @@ const patientApp = {
     async renderDashboard() {
         const user = authService.getCurrentUser();
         const container = app.container;
-        
+
         container.innerHTML = `
             <div class="flex justify-center items-center h-64">
                 <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-teal-500"></div>
@@ -18,26 +18,26 @@ const patientApp = {
 
         try {
             const patientAppointments = await dbService.getAppointments(user.id, ROLES.PATIENT);
-            
+
             // Busca todos os agendamentos da clínica no Supabase para bloquear a agenda
-            const allAppointments = await dbService.getAppointments(null, ROLES.PSYCHOLOGIST).catch(() => patientAppointments); 
-            
+            const allAppointments = await dbService.getAppointments(null, ROLES.PSYCHOLOGIST).catch(() => patientAppointments);
+
             const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {
                 workDays: [1, 2, 3, 4, 5],
                 startTime: '09:00', endTime: '17:00',
                 lunchStart: '12:00', lunchEnd: '13:00',
                 sessionDuration: 50, buffer: 10,
                 availabilityStartDate: new Date().toISOString().split('T')[0],
-                availabilityEndDate: new Date(Date.now() + 60*24*60*60*1000).toISOString().split('T')[0],
+                availabilityEndDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
                 holidays: []
             };
 
             const now = new Date();
-            
+
             const upcoming = patientAppointments
                 .filter(app => new Date(app.date) >= now && (!app.status || app.status === 'SCHEDULED'))
                 .sort((a, b) => new Date(a.date) - new Date(b.date));
-            
+
             const past = patientAppointments
                 .filter(app => new Date(app.date) < now || (app.status && app.status.startsWith('CANCELLED')))
                 .sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -82,7 +82,7 @@ const patientApp = {
             `;
 
             this.startNotificationMonitor(upcoming[0]);
-            
+
             // Passamos a lista de agendamentos para a função validar a regra no Supabase
             this.attachBookingListeners(user.id, patientAppointments);
 
@@ -138,12 +138,12 @@ const patientApp = {
                 <div class="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-sky-300 transition-colors">
                     <div class="flex items-center">
                         <div class="w-12 h-12 rounded-lg bg-sky-50 text-sky-600 flex flex-col justify-center items-center mr-4 font-bold border border-sky-100">
-                            <span class="text-[10px] uppercase leading-none mb-0.5">${date.toLocaleDateString('pt-BR', {month:'short'})}</span>
+                            <span class="text-[10px] uppercase leading-none mb-0.5">${date.toLocaleDateString('pt-BR', { month: 'short' })}</span>
                             <span class="text-lg leading-none">${date.getDate()}</span>
                         </div>
                         <div>
-                            <p class="text-sm font-bold text-slate-800">${date.toLocaleDateString('pt-BR', {weekday: 'long'})}</p>
-                            <p class="text-xs font-medium text-slate-500 mt-0.5">Às ${date.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</p>
+                            <p class="text-sm font-bold text-slate-800">${date.toLocaleDateString('pt-BR', { weekday: 'long' })}</p>
+                            <p class="text-xs font-medium text-slate-500 mt-0.5">Às ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                         </div>
                     </div>
                     <button onclick="patientApp.cancelAppointment('${app.id}', '${app.date}')" class="text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700 px-3 py-2 rounded-lg transition-colors">
@@ -170,13 +170,13 @@ const patientApp = {
     async cancelAppointment(appId, appDateStr) {
         const now = new Date();
         const appointmentTime = new Date(appDateStr);
-        
+
         const hoursDifference = (appointmentTime - now) / (1000 * 60 * 60);
 
         if (hoursDifference < 24) {
             app.showNotification(
-                "Cancelamento Bloqueado", 
-                "Faltam menos de 24h para a consulta.", 
+                "Cancelamento Bloqueado",
+                "Faltam menos de 24h para a consulta.",
                 true
             );
 
@@ -184,9 +184,9 @@ const patientApp = {
             const { data: admins } = await window.supabaseClient.from('profiles').select('phone').eq('role', ROLES.PSYCHOLOGIST).limit(1);
             const adminPhone = (admins && admins[0]) ? admins[0].phone : '';
             const cleanPhone = adminPhone ? adminPhone.replace(/\D/g, '') : '';
-            
+
             const dateFmt = appointmentTime.toLocaleDateString('pt-BR');
-            const timeFmt = appointmentTime.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+            const timeFmt = appointmentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
             const msg = encodeURIComponent(`Olá! Gostaria de falar sobre o cancelamento da minha sessão agendada para ${dateFmt} às ${timeFmt}.`);
             const waLink = cleanPhone ? `https://wa.me/55${cleanPhone}?text=${msg}` : `https://wa.me/?text=${msg}`;
 
@@ -216,7 +216,7 @@ const patientApp = {
             return;
         }
 
-        if(confirm("Tem certeza que deseja cancelar esta consulta? O horário será liberado imediatamente para outros colegas.")) {
+        if (confirm("Tem certeza que deseja cancelar esta consulta? O horário será liberado imediatamente para outros colegas.")) {
             try {
                 await dbService.updateAppointmentStatus(appId, 'CANCELLED_BY_PATIENT');
                 app.showNotification("Cancelado", "Seu agendamento foi cancelado com sucesso.", false);
@@ -229,7 +229,7 @@ const patientApp = {
 
     buildDynamicCalendar(settings, allAppointments, patientAppointments) {
         let html = '';
-        
+
         const startDate = new Date(settings.availabilityStartDate + 'T00:00:00');
         const endDate = new Date(settings.availabilityEndDate + 'T23:59:59');
         const holidays = settings.holidays || [];
@@ -255,25 +255,25 @@ const patientApp = {
 
             if (isWorkDay) {
                 const displayDate = cursor.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }).toUpperCase();
-                
+
                 html += `
-                    <div>
-                        <div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-4">
-                            <h4 class="text-xs font-bold text-slate-400 tracking-widest">${displayDate}</h4>
-                            ${isHoliday ? '<span class="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">FERIADO / BLOQUEADO</span>' : ''}
-                        </div>
-                `;
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-4">
+                            <h4 class="text-xs font-bold text-slate-400 tracking-widest">${displayDate}</h4>
+                            ${isHoliday ? '<span class="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">FERIADO / BLOQUEADO</span>' : ''}
+                        </div>
+                `;
 
                 if (hasBookingThisDay) {
                     html += `
-                        <div class="bg-sky-50 border border-sky-100 rounded-xl p-4 text-center">
-                            <p class="text-xs font-bold text-sky-700">Você já possui uma sessão agendada para este dia.</p>
-                        </div>
-                    </div>
-                    `;
+                        <div class="bg-sky-50 border border-sky-100 rounded-xl p-4 text-center">
+                            <p class="text-xs font-bold text-sky-700">Você já possui uma sessão agendada para este dia.</p>
+                        </div>
+                    </div>
+                    `;
                 } else {
                     html += `<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">`;
-                    
+
                     let currentMin = startMin;
                     while (currentMin + settings.sessionDuration <= endMin) {
                         if (currentMin >= lunchStart && currentMin < lunchEnd) {
@@ -285,24 +285,26 @@ const patientApp = {
                         const m = (currentMin % 60).toString().padStart(2, '0');
                         const timeStr = `${h}:${m}`;
                         const fullDateTime = `${dateStr}T${timeStr}:00`;
-                        
-                        const isBooked = allAppointments.some(a => a.date === fullDateTime && (!a.status || a.status === 'SCHEDULED'));
+
+                        // CIRURGIA: Usando startsWith para alinhar os formatos de hora
+                        const checkStr = `${dateStr}T${timeStr}`;
+                        const isBooked = allAppointments.some(a => a.date.startsWith(checkStr) && (!a.status || a.status === 'SCHEDULED'));
 
                         if (isHoliday || isBooked) {
                             const reason = isHoliday ? 'Feriado' : 'Ocupado';
                             html += `
-                                <button onclick="app.showNotification('${reason}', 'Este horário não está disponível para agendamento.', true)" 
-                                    class="py-2 text-xs font-bold text-red-400 bg-red-50 border border-red-100 rounded-lg cursor-not-allowed opacity-70">
-                                    ${isHoliday ? 'BLOQUEADO' : timeStr}
-                                </button>
-                            `;
+                                <button onclick="app.showNotification('${reason}', 'Este horário não está disponível para agendamento.', true)" 
+                                    class="py-2 text-xs font-bold text-red-400 bg-red-50 border border-red-100 rounded-lg cursor-not-allowed opacity-70">
+                                    ${isHoliday ? 'BLOQUEADO' : timeStr}
+                                </button>
+                            `;
                         } else {
                             html += `
-                                <button data-date="${fullDateTime}" 
-                                    class="btn-book py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-teal-500 hover:text-teal-600 transition-all">
-                                    ${timeStr}
-                                </button>
-                            `;
+                                <button data-date="${fullDateTime}" 
+                                    class="btn-book py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-teal-500 hover:text-teal-600 transition-all">
+                                    ${timeStr}
+                                </button>
+                            `;
                         }
                         currentMin += step;
                     }
@@ -318,10 +320,10 @@ const patientApp = {
         if (past.length === 0) return '<p class="text-slate-400 text-xs italic">Nenhum registo.</p>';
         return past.map(a => {
             const date = new Date(a.date);
-            
+
             let statusText = "Concluída";
             let statusClasses = "bg-teal-100 text-teal-800";
-            
+
             if (a.status === 'CANCELLED_BY_PATIENT') {
                 statusText = "Cancelada por você";
                 statusClasses = "bg-orange-100 text-orange-800";
@@ -334,7 +336,7 @@ const patientApp = {
                 <div class="p-3 bg-slate-50 rounded-lg border border-slate-100 text-xs flex justify-between items-center">
                     <div>
                         <p class="font-bold text-slate-700">${date.toLocaleDateString('pt-BR')}</p>
-                        <p class="text-slate-500">${date.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</p>
+                        <p class="text-slate-500">${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                     </div>
                     <span class="px-2 py-1 rounded text-[10px] font-bold ${statusClasses}">${statusText}</span>
                 </div>
@@ -394,7 +396,7 @@ const patientApp = {
         const modal = document.createElement('div');
         modal.id = 'profile-modal';
         modal.className = 'fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 view-transition animate-fade-in';
-        
+
         modal.innerHTML = `
             <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6">
                 <div class="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
@@ -423,7 +425,7 @@ const patientApp = {
                 </div>
             </div>
         `;
-        
+
         document.body.appendChild(modal);
 
         const phoneInput = document.getElementById('edit-phone');
@@ -459,7 +461,7 @@ const patientApp = {
                 .from('profiles')
                 .update({ phone: newPhone })
                 .eq('id', userId);
-            
+
             if (profileError) throw profileError;
 
             // 3. Atualiza o cache local para a tela não ficar desatualizada
