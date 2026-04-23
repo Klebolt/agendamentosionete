@@ -267,7 +267,7 @@ const adminApp = {
         window.print();
         setTimeout(() => document.getElementById('print-overrides').remove(), 1000);
     },
-
+    
     // ==========================================
     // 📅 VISÃO DE AGENDA 
     // ==========================================
@@ -275,6 +275,10 @@ const adminApp = {
         const appointments = await dbService.getAppointments(null, ROLES.PSYCHOLOGIST);
         const now = new Date();
         
+        // CIRURGIA: Lendo o link que a Dra. Ionete salvou no painel!
+        const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {};
+        const dynamicMeetUrl = settings.meetUrl || CONFIG.MEET_URL;
+
         const upcomingApps = appointments.filter(a => new Date(a.date) >= now && (!a.status || a.status === 'SCHEDULED')).sort((a,b) => new Date(a.date) - new Date(b.date));
         const pastApps = appointments.filter(a => new Date(a.date) < now || (a.status && a.status.startsWith('CANCELLED'))).sort((a,b) => new Date(b.date) - new Date(a.date));
 
@@ -349,7 +353,7 @@ const adminApp = {
                     </div>
 
                     <div class="flex space-x-2 shrink-0">
-                        <a href="${CONFIG.MEET_URL}" target="_blank" class="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-bold border border-emerald-200">Entrar</a>
+                        <a href="${dynamicMeetUrl}" target="_blank" class="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-bold border border-emerald-200">Entrar</a>
                         <button onclick="adminApp.openPatientRecord('${appt.patientId}')" class="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-bold">Prontuário</button>
                     </div>
                 </div>
