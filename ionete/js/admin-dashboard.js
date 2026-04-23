@@ -464,7 +464,7 @@ const adminApp = {
 
         return `
             <div class="max-w-4xl mx-auto space-y-6 pb-12">
-                <div class="bg-white rounded-2xl p-6 border"><h3 class="font-bold mb-4">Link da Reunião</h3><input type="url" id="custom-meet-url" value="${CONFIG.MEET_URL}" class="w-full p-2.5 border rounded-lg"></div>
+                <div class="bg-white rounded-2xl p-6 border"><h3 class="font-bold mb-4">Link da Reunião</h3><input type="url" id="custom-meet-url" value="${s.meetUrl || CONFIG.MEET_URL}" class="w-full p-2.5 border rounded-lg"></div>
                 <div class="bg-white rounded-2xl p-6 border"><h3 class="font-bold mb-4">Período e Feriados</h3>
                     <div class="grid grid-cols-2 gap-4 mb-4">
                         <div><label class="text-sm">Início</label><input type="date" id="avail-start" value="${s.availabilityStartDate}" class="w-full p-2 border rounded-lg"></div>
@@ -492,7 +492,7 @@ const adminApp = {
 
     saveSettings() {
         CONFIG.MEET_URL = document.getElementById('custom-meet-url').value;
-        const s = { workDays: [...document.querySelectorAll('.day-checkbox:checked')].map(c => +c.value), startTime: document.getElementById('start-time').value, endTime: document.getElementById('end-time').value, lunchStart: document.getElementById('lunch-start').value, lunchEnd: document.getElementById('lunch-end').value, sessionDuration: +document.getElementById('session-duration').value, buffer: +document.getElementById('session-buffer').value, availabilityStartDate: document.getElementById('avail-start').value, availabilityEndDate: document.getElementById('avail-end').value, holidays: this.currentHolidays };
+        const s = { meetUrl: document.getElementById('custom-meet-url').value, workDays: [...document.querySelectorAll('.day-checkbox:checked')].map(c => +c.value), startTime: document.getElementById('start-time').value, endTime: document.getElementById('end-time').value, lunchStart: document.getElementById('lunch-start').value, lunchEnd: document.getElementById('lunch-end').value, sessionDuration: +document.getElementById('session-duration').value, buffer: +document.getElementById('session-buffer').value, availabilityStartDate: document.getElementById('avail-start').value, availabilityEndDate: document.getElementById('avail-end').value, holidays: this.currentHolidays };
         localStorage.setItem(CONFIG.STORAGE_KEYS.SETTINGS, JSON.stringify(s));
         app.showNotification('Salvo', 'Configurações atualizadas.', false);
     }
