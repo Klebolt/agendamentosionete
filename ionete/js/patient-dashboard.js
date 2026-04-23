@@ -286,28 +286,25 @@ const patientApp = {
                         const m = (currentMin % 60).toString().padStart(2, '0');
                         const timeStr = `${h}:${m}`;
                         const fullDateTime = `${dateStr}T${timeStr}:00`;
-
-                        // CIRURGIA MÁXIMA: Transformamos a data do botão em Timestamp matemático
+                        
+                        // Transformação em Timestamp para evitar bug de fuso horário
                         const btnTimestamp = new Date(fullDateTime).getTime();
 
                         const isBooked = allAppointments.some(a => {
                             if (!a || !a.date) return false;
                             
-                            // Transforma a data que veio do banco em Timestamp matemático
                             const dbTimestamp = new Date(a.date).getTime();
-                            
-                            // A data está bloqueada se a matemática bater OU se o texto cru bater
                             const isSameSlot = (dbTimestamp === btnTimestamp) || a.date.includes(`${dateStr}T${timeStr}`);
-
+                            
                             return isSameSlot && (!a.status || a.status === 'SCHEDULED');
                         });
 
                         if (isHoliday || isBooked) {
-                            const reason = isHoliday ? 'Feriado' : 'Ocupado';
+                            const label = isHoliday ? 'FERIADO' : 'OCUPADO';
                             html += `
-                                <button onclick="app.showNotification('${reason}', 'Este horário não está disponível para agendamento.', true)" 
-                                    class="py-2 text-xs font-bold text-red-400 bg-red-50 border border-red-100 rounded-lg cursor-not-allowed opacity-70">
-                                    ${isHoliday ? 'BLOQUEADO' : timeStr}
+                                <button disabled 
+                                    class="py-2 text-xs font-bold text-red-500 bg-red-50 border border-red-200 rounded-lg cursor-not-allowed opacity-60">
+                                    ${label}
                                 </button>
                             `;
                         } else {
