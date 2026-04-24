@@ -22,7 +22,8 @@ const patientApp = {
             // Busca todos os agendamentos da clínica no Supabase para bloquear a agenda
             const allAppointments = await dbService.getAppointments(null, ROLES.PSYCHOLOGIST).catch(() => patientAppointments);
 
-            const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {
+            // 1. Definimos o padrão como um plano de segurança (fallback) caso falhe a internet
+            let settings = {
                 workDays: [1, 2, 3, 4, 5],
                 startTime: '09:00', endTime: '17:00',
                 lunchStart: '12:00', lunchEnd: '13:00',
@@ -31,6 +32,28 @@ const patientApp = {
                 availabilityEndDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
                 holidays: []
             };
+
+            // 2. Buscamos a configuração real na nuvem (Supabase)
+            try {
+                const { data, error } = await window.supabase // Use a mesma variável de conexão que usou no Admin
+                    .from('configuracoes')
+                    .select('dados_config')
+                    .eq('id', 1)
+                    .single();
+
+                if (error) {
+                    console.warn("Aviso: Não foi possível carregar as configurações da nuvem. Usando padrão.", error);
+                } else if (data && data.dados_config) {
+                    // Se encontrou no banco, substitui o padrão pelos dados reais!
+                    settings = data.dados_config;
+
+                    // Atualiza o cache do paciente silenciosamente
+                    localStorage.setItem(CONFIG.STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+                }
+            } catch (err) {
+                console.error("Erro fatal ao conectar com as configurações:", err);
+                // Se der erro, ele continua usando a variável 'settings' padrão definida lá em cima.
+            }
 
             const now = new Date();
 
@@ -291,16 +314,16 @@ const patientApp = {
                         const m = (currentMin % 60).toString().padStart(2, '0');
                         const timeStr = `${h}:${m}`;
                         const fullDateTime = `${dateStr}T${timeStr}:00`;
-                        
+
                         // Transformação em Timestamp para evitar bug de fuso horário
                         const btnTimestamp = new Date(fullDateTime).getTime();
 
                         const isBooked = allAppointments.some(a => {
                             if (!a || !a.date) return false;
-                            
+
                             const dbTimestamp = new Date(a.date).getTime();
                             const isSameSlot = (dbTimestamp === btnTimestamp) || a.date.includes(`${dateStr}T${timeStr}`);
-                            
+
                             return isSameSlot && (!a.status || a.status === 'SCHEDULED');
                         });
 
