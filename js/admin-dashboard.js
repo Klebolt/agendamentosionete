@@ -518,12 +518,25 @@ const adminApp = {
             // 3. O Bisturi: Envia a configuração para o Supabase
             // ATENÇÃO: Substitua 'configuracoes' pelo nome da sua tabela
             // Usando o cliente do Supabase que está dentro do seu CONFIG global
-            const { data, error } = await window.supabaseClient
-                .from('configuracoes') // Salva o objeto JSON inteiro
+            // 3. O Bisturi: Envia a configuração para o Supabase
+            // Tenta usar a variável global ou recriar a conexão se necessário
+            const supabaseConn = window.supabaseClient || window.supabase || CONFIG.supabaseClient;
 
-            if (error) throw error;
+            if (!supabaseConn) {
+                console.error("Conexão Supabase não encontrada no Admin.");
+                app.showNotification('Erro', 'Falha na conexão com o banco.', true);
+                return; // Para a execução aqui
+            }
 
-            // 4. Feedback de Sucesso Real
+            const { data, error } = await supabaseConn
+                .from('configuracoes')
+                .upsert({ id: 1, dados_config: s }); // ATENÇÃO: Tirei as [] de volta do objeto!
+
+            if (error) {
+                console.error("Erro Supabase:", error.message, error.details);
+                throw error;
+            }
+
             app.showNotification('Sucesso', 'Horários atualizados no sistema e para os pacientes!', false);
 
         } catch (error) {
