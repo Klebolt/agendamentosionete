@@ -33,26 +33,34 @@ const patientApp = {
                 holidays: []
             };
 
-            // 2. Buscamos a configuração real na nuvem (Supabase)
+            // 2. Buscamos a configuração real na nuvem (Supabase) - BLINDADO COM ESPIÕES
             try {
-                const { data, error } = await window.supabase // Use a mesma variável de conexão que usou no Admin
+                const supabaseConn = window.supabaseClient || window.supabase || CONFIG.supabaseClient;
+                
+                if (!supabaseConn) throw new Error("Cliente Supabase não encontrado no app do paciente");
+
+                console.log("🕵️ Paciente: Buscando horários na nuvem...");
+
+                const { data, error } = await supabaseConn
                     .from('configuracoes')
                     .select('dados_config')
                     .eq('id', 1)
                     .single();
 
-                if (error) {
-                    console.warn("Aviso: Não foi possível carregar as configurações da nuvem. Usando padrão.", error);
-                } else if (data && data.dados_config) {
-                    // Se encontrou no banco, substitui o padrão pelos dados reais!
-                    settings = data.dados_config;
+                console.log("📦 Paciente: Dados recebidos:", { data, error });
 
-                    // Atualiza o cache do paciente silenciosamente
+                if (error) {
+                    console.warn("Aviso: Falha ao ler nuvem. Usando padrão.", error);
+                } else if (data && data.dados_config && Object.keys(data.dados_config).length > 0) {
+                    // Se encontrou dados válidos, substitui os horários!
+                    settings = data.dados_config;
                     localStorage.setItem(CONFIG.STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+                    console.log("✅ Horários do paciente atualizados com sucesso!");
+                } else {
+                    console.warn("Aviso: Tabela encontrada, mas vazia. Usando padrão.");
                 }
             } catch (err) {
-                console.error("Erro fatal ao conectar com as configurações:", err);
-                // Se der erro, ele continua usando a variável 'settings' padrão definida lá em cima.
+                console.error("❌ Erro fatal na conexão do paciente:", err);
             }
 
             const now = new Date();
@@ -128,9 +136,7 @@ const patientApp = {
         const formattedDate = appDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
         const formattedTime = appDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-        // CIRURGIA: Lê o link dinâmico salvo pela Dra. Ionete no painel de Configuração
         const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {};
-        // Tenta ler os nomes mais comuns que você pode ter usado no admin-dashboard.js, se não achar, usa o do config.js
         const dynamicMeetUrl = settings.meetUrl || settings.meetingLink || settings.meetLink || CONFIG.MEET_URL;
 
         return `
@@ -207,7 +213,6 @@ const patientApp = {
                 true
             );
 
-            // Adiciona modal para contato via WhatsApp buscando o admin no Supabase
             const { data: admins } = await window.supabaseClient.from('profiles').select('phone').eq('role', ROLES.PSYCHOLOGIST).limit(1);
             const adminPhone = (admins && admins[0]) ? admins[0].phone : '';
             const cleanPhone = adminPhone ? adminPhone.replace(/\D/g, '') : '';
@@ -315,7 +320,6 @@ const patientApp = {
                         const timeStr = `${h}:${m}`;
                         const fullDateTime = `${dateStr}T${timeStr}:00`;
 
-                        // Transformação em Timestamp para evitar bug de fuso horário
                         const btnTimestamp = new Date(fullDateTime).getTime();
 
                         const isBooked = allAppointments.some(a => {
