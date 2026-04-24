@@ -516,10 +516,6 @@ const adminApp = {
             localStorage.setItem(CONFIG.STORAGE_KEYS.SETTINGS, JSON.stringify(s));
 
             // 3. O Bisturi: Envia a configuração para o Supabase
-            // ATENÇÃO: Substitua 'configuracoes' pelo nome da sua tabela
-            // Usando o cliente do Supabase que está dentro do seu CONFIG global
-            // 3. O Bisturi: Envia a configuração para o Supabase
-            // Tenta usar a variável global ou recriar a conexão se necessário
             const supabaseConn = window.supabaseClient || window.supabase || CONFIG.supabaseClient;
 
             if (!supabaseConn) {
@@ -528,9 +524,18 @@ const adminApp = {
                 return; // Para a execução aqui
             }
 
+            // ESPIÃO 1: Avisa o que estamos tentando enviar
+            console.log("🚀 Tentando enviar para o Supabase (UPDATE):", s);
+
+            // TROCAMOS PARA O COMANDO UPDATE DIRETO E RETO!
             const { data, error } = await supabaseConn
                 .from('configuracoes')
-                .upsert({ id: 1, dados_config: s }); // ATENÇÃO: Tirei as [] de volta do objeto!
+                .update({ dados_config: s })
+                .eq('id', 1)
+                .select();
+
+            // ESPIÃO 2: Mostra a resposta real do servidor do Supabase
+            console.log("📥 Resposta do Supabase:", { data, error });
 
             if (error) {
                 console.error("Erro Supabase:", error.message, error.details);
@@ -543,5 +548,6 @@ const adminApp = {
             console.error("Erro fatal ao salvar no banco:", error);
             app.showNotification('Erro', 'Não foi possível salvar na nuvem.', true);
         }
+
     }
 };
