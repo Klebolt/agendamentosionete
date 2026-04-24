@@ -5,7 +5,7 @@
 
 const adminApp = {
     currentTab: 'agenda',
-    agendaSubTab: 'upcoming', 
+    agendaSubTab: 'upcoming',
     currentHolidays: [],
 
     async renderDashboard() {
@@ -58,7 +58,7 @@ const adminApp = {
     },
 
     async getContentByTab() {
-        switch(this.currentTab) {
+        switch (this.currentTab) {
             case 'agenda': return await this.renderAgendaView();
             case 'patients': return await this.renderPatientsView();
             case 'reports': return this.renderReportsView();
@@ -136,10 +136,10 @@ const adminApp = {
     async generateReport() {
         const period = document.getElementById('report-period').value;
         const dateInput = document.getElementById('report-date-val')?.value;
-        
+
         const allAppointments = await dbService.getAppointments(null, ROLES.PSYCHOLOGIST);
         const patients = await dbService.getAllPatients();
-        
+
         let filteredApps = allAppointments;
         let periodTitle = "Histórico Completo";
 
@@ -154,7 +154,7 @@ const adminApp = {
             periodTitle = `Relatório Anual - ${dateInput}`;
         }
 
-        filteredApps.sort((a,b) => new Date(a.date) - new Date(b.date));
+        filteredApps.sort((a, b) => new Date(a.date) - new Date(b.date));
 
         // 3. Calcula as Métricas (KPIs) usando o sistema de Status
         const now = new Date();
@@ -163,11 +163,11 @@ const adminApp = {
         const cancelledPat = filteredApps.filter(a => a.status === 'CANCELLED_BY_PATIENT');
         const cancelledPsy = filteredApps.filter(a => a.status === 'CANCELLED_BY_PSYCHOLOGIST');
         const totalCancelled = cancelledPat.length + cancelledPsy.length;
-        
+
         const uniquePatientIds = [...new Set(filteredApps.map(a => a.patientId))];
 
         const reportContainer = document.getElementById('printable-report');
-        
+
         let html = `
             <div class="border-b-2 border-slate-800 pb-6 mb-6 text-center md:text-left flex flex-col md:flex-row justify-between items-center">
                 <div>
@@ -216,11 +216,11 @@ const adminApp = {
                     </thead>
                     <tbody class="divide-y divide-slate-100">
             `;
-            
+
             for (let appt of filteredApps) {
                 const pat = patients.find(p => p.id === appt.patientId);
                 const d = new Date(appt.date);
-                
+
                 let statusBadge = '';
                 if (appt.status === 'CANCELLED_BY_PATIENT') {
                     statusBadge = `<span class="bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs font-bold">Cancelada pelo Paciente</span>`;
@@ -234,7 +234,7 @@ const adminApp = {
 
                 html += `
                     <tr>
-                        <td class="px-4 py-3 text-slate-600">${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</td>
+                        <td class="px-4 py-3 text-slate-600">${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</td>
                         <td class="px-4 py-3 font-semibold text-slate-800">${pat ? pat.name : 'Desconhecido'}</td>
                         <td class="px-4 py-3">${statusBadge}</td>
                     </tr>
@@ -267,20 +267,20 @@ const adminApp = {
         window.print();
         setTimeout(() => document.getElementById('print-overrides').remove(), 1000);
     },
-    
+
     // ==========================================
     // 📅 VISÃO DE AGENDA 
     // ==========================================
     async renderAgendaView() {
         const appointments = await dbService.getAppointments(null, ROLES.PSYCHOLOGIST);
         const now = new Date();
-        
+
         // CIRURGIA: Lendo o link que a Dra. Ionete salvou no painel!
         const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {};
         const dynamicMeetUrl = settings.meetUrl || CONFIG.MEET_URL;
 
-        const upcomingApps = appointments.filter(a => new Date(a.date) >= now && (!a.status || a.status === 'SCHEDULED')).sort((a,b) => new Date(a.date) - new Date(b.date));
-        const pastApps = appointments.filter(a => new Date(a.date) < now || (a.status && a.status.startsWith('CANCELLED'))).sort((a,b) => new Date(b.date) - new Date(a.date));
+        const upcomingApps = appointments.filter(a => new Date(a.date) >= now && (!a.status || a.status === 'SCHEDULED')).sort((a, b) => new Date(a.date) - new Date(b.date));
+        const pastApps = appointments.filter(a => new Date(a.date) < now || (a.status && a.status.startsWith('CANCELLED'))).sort((a, b) => new Date(b.date) - new Date(a.date));
 
         let html = `
             <div class="max-w-4xl mx-auto mb-6 flex space-x-4 border-b border-slate-200 print:hidden">
@@ -307,10 +307,10 @@ const adminApp = {
                 const notes = await dbService.getNotesByPatient(appt.patientId);
                 const sessionDateStr = date.toISOString().split('T')[0];
                 const noteObj = notes.find(n => n.date.startsWith(sessionDateStr));
-                
+
                 let visualStatus = '';
-                if(appt.status === 'CANCELLED_BY_PATIENT') visualStatus = `<span class="block text-xs font-bold text-orange-600 bg-orange-50 mt-1 px-2 py-1 rounded">Cancelada pelo Paciente</span>`;
-                else if(appt.status === 'CANCELLED_BY_PSYCHOLOGIST') visualStatus = `<span class="block text-xs font-bold text-red-600 bg-red-50 mt-1 px-2 py-1 rounded">Cancelada por Você</span>`;
+                if (appt.status === 'CANCELLED_BY_PATIENT') visualStatus = `<span class="block text-xs font-bold text-orange-600 bg-orange-50 mt-1 px-2 py-1 rounded">Cancelada pelo Paciente</span>`;
+                else if (appt.status === 'CANCELLED_BY_PSYCHOLOGIST') visualStatus = `<span class="block text-xs font-bold text-red-600 bg-red-50 mt-1 px-2 py-1 rounded">Cancelada por Você</span>`;
                 else visualStatus = `<span class="block text-xs font-bold text-teal-600 bg-teal-50 mt-1 px-2 py-1 rounded">Sessão Concluída</span>`;
 
                 const noteSnippet = noteObj ? `<strong>Resumo:</strong> ${noteObj.text.substring(0, 80)}...` : `<span class="italic opacity-70">Sem anotações nesta data.</span>`;
@@ -319,7 +319,7 @@ const adminApp = {
                     <div class="bg-white border border-slate-200 rounded-xl p-5 mb-3 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 ${appt.status && appt.status.includes('CANCELLED') ? 'opacity-75 bg-slate-50' : ''}">
                         <div class="flex items-center">
                             <div class="w-16 h-16 rounded-lg bg-slate-100 flex flex-col items-center justify-center mr-4 shrink-0">
-                                <span class="text-sm text-slate-500 uppercase font-bold">${date.toLocaleDateString('pt-BR', {month: 'short'})}</span>
+                                <span class="text-sm text-slate-500 uppercase font-bold">${date.toLocaleDateString('pt-BR', { month: 'short' })}</span>
                                 <span class="text-xl font-black text-slate-800">${date.getDate()}</span>
                             </div>
                             <div>
@@ -340,7 +340,7 @@ const adminApp = {
                 <div class="group flex flex-col sm:flex-row items-center bg-white border border-slate-200 rounded-xl p-4 mb-3 hover:border-sky-300 transition-all shadow-sm relative gap-4">
                     <div class="w-full sm:w-20 text-center sm:border-r border-slate-100 sm:mr-4 shrink-0">
                         <span class="block text-xl font-bold text-slate-700">${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}</span>
-                        <span class="text-xs text-slate-400 uppercase font-medium">${date.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})}</span>
+                        <span class="text-xs text-slate-400 uppercase font-medium">${date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
                     </div>
                     <div class="flex-1 text-center sm:text-left">
                         <h4 class="font-bold text-slate-800 flex items-center justify-center sm:justify-start">${patient?.name || 'Paciente Externo'} ${waButton}</h4>
@@ -365,7 +365,7 @@ const adminApp = {
 
     // AQUI: Atualizado cirurgicamente para usar o dbService do Supabase
     async deleteAppointment(appId) {
-        if(confirm("Tem certeza que deseja cancelar esta sessão? O paciente não a verá mais e o horário será liberado.")) {
+        if (confirm("Tem certeza que deseja cancelar esta sessão? O paciente não a verá mais e o horário será liberado.")) {
             try {
                 await dbService.updateAppointmentStatus(appId, 'CANCELLED_BY_PSYCHOLOGIST');
                 app.showNotification("Cancelada", "Sessão marcada como cancelada por você.", true);
@@ -396,8 +396,8 @@ const adminApp = {
     // AQUI: Atualizado cirurgicamente para usar o dbService do Supabase
     async saveEditedAppointment(appId) {
         const newVal = document.getElementById('new-app-date').value;
-        if(!newVal) return;
-        
+        if (!newVal) return;
+
         try {
             await dbService.rescheduleAppointment(appId, newVal + ":00");
             document.getElementById('edit-modal').remove();
@@ -462,7 +462,7 @@ const adminApp = {
     },
 
     renderSettingsView() {
-        const s = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || { workDays: [1,2,3,4,5], startTime: '09:00', endTime: '17:00', lunchStart: '12:00', lunchEnd: '13:00', sessionDuration: 50, buffer: 10, availabilityStartDate: new Date().toISOString().split('T')[0], availabilityEndDate: new Date(Date.now() + 60*24*60*60*1000).toISOString().split('T')[0], holidays: [] };
+        const s = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || { workDays: [1, 2, 3, 4, 5], startTime: '09:00', endTime: '17:00', lunchStart: '12:00', lunchEnd: '13:00', sessionDuration: 50, buffer: 10, availabilityStartDate: new Date().toISOString().split('T')[0], availabilityEndDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], holidays: [] };
         this.currentHolidays = s.holidays || [];
         setTimeout(() => this.updateHolidaysListUI(), 50);
 
@@ -482,7 +482,7 @@ const adminApp = {
                         <div><label class="text-sm">Duração (min)</label><input type="number" id="session-duration" value="${s.sessionDuration}" class="w-full p-2 border rounded-lg"></div>
                         <div><label class="text-sm">Buffer (min)</label><input type="number" id="session-buffer" value="${s.buffer}" class="w-full p-2 border rounded-lg"></div>
                     </div>
-                    <div class="flex flex-wrap gap-2 mb-4">${[{n:1,l:'Seg'},{n:2,l:'Ter'},{n:3,l:'Qua'},{n:4,l:'Qui'},{n:5,l:'Sex'}].map(d => `<label class="px-4 py-2 border rounded-lg"><input type="checkbox" value="${d.n}" class="day-checkbox mr-2" ${s.workDays.includes(d.n) ? 'checked' : ''}>${d.l}</label>`).join('')}</div>
+                    <div class="flex flex-wrap gap-2 mb-4">${[{ n: 1, l: 'Seg' }, { n: 2, l: 'Ter' }, { n: 3, l: 'Qua' }, { n: 4, l: 'Qui' }, { n: 5, l: 'Sex' }].map(d => `<label class="px-4 py-2 border rounded-lg"><input type="checkbox" value="${d.n}" class="day-checkbox mr-2" ${s.workDays.includes(d.n) ? 'checked' : ''}>${d.l}</label>`).join('')}</div>
                     <div class="grid grid-cols-2 gap-4"><div class="p-4 border rounded-xl"><label class="text-sm">Início/Fim do Dia</label><div class="flex gap-2 mt-2"><input type="time" id="start-time" value="${s.startTime}" class="p-2 border rounded-lg w-full"><input type="time" id="end-time" value="${s.endTime}" class="p-2 border rounded-lg w-full"></div></div><div class="p-4 border rounded-xl"><label class="text-sm">Início/Fim do Almoço</label><div class="flex gap-2 mt-2"><input type="time" id="lunch-start" value="${s.lunchStart}" class="p-2 border rounded-lg w-full"><input type="time" id="lunch-end" value="${s.lunchEnd}" class="p-2 border rounded-lg w-full"></div></div></div>
                 </div>
                 <button onclick="adminApp.saveSettings()" class="w-full py-4 bg-slate-900 text-white rounded-xl font-bold">Salvar Configurações</button>
@@ -494,10 +494,41 @@ const adminApp = {
     removeHoliday(d) { this.currentHolidays = this.currentHolidays.filter(x => x !== d); this.updateHolidaysListUI(); },
     updateHolidaysListUI() { document.getElementById('holidays-list').innerHTML = this.currentHolidays.sort().map(d => `<span class="bg-red-100 px-3 py-1 rounded-lg border flex items-center">${d.split('-').reverse().join('/')} <button onclick="adminApp.removeHoliday('${d}')" class="ml-2 font-bold text-red-600">&times;</button></span>`).join(''); },
 
-    saveSettings() {
-        CONFIG.MEET_URL = document.getElementById('custom-meet-url').value;
-        const s = { meetUrl: document.getElementById('custom-meet-url').value, workDays: [...document.querySelectorAll('.day-checkbox:checked')].map(c => +c.value), startTime: document.getElementById('start-time').value, endTime: document.getElementById('end-time').value, lunchStart: document.getElementById('lunch-start').value, lunchEnd: document.getElementById('lunch-end').value, sessionDuration: +document.getElementById('session-duration').value, buffer: +document.getElementById('session-buffer').value, availabilityStartDate: document.getElementById('avail-start').value, availabilityEndDate: document.getElementById('avail-end').value, holidays: this.currentHolidays };
-        localStorage.setItem(CONFIG.STORAGE_KEYS.SETTINGS, JSON.stringify(s));
-        app.showNotification('Salvo', 'Configurações atualizadas.', false);
+    async saveSettings() {
+        try {
+            // 1. Coleta todos os dados do painel Admin
+            CONFIG.MEET_URL = document.getElementById('custom-meet-url').value;
+            const s = {
+                meetUrl: document.getElementById('custom-meet-url').value,
+                workDays: [...document.querySelectorAll('.day-checkbox:checked')].map(c => +c.value),
+                startTime: document.getElementById('start-time').value,
+                endTime: document.getElementById('end-time').value,
+                lunchStart: document.getElementById('lunch-start').value,
+                lunchEnd: document.getElementById('lunch-end').value,
+                sessionDuration: +document.getElementById('session-duration').value,
+                buffer: +document.getElementById('session-buffer').value,
+                availabilityStartDate: document.getElementById('avail-start').value,
+                availabilityEndDate: document.getElementById('avail-end').value,
+                holidays: this.currentHolidays
+            };
+
+            // 2. Atualiza o cache local (para a tela da Admin não piscar)
+            localStorage.setItem(CONFIG.STORAGE_KEYS.SETTINGS, JSON.stringify(s));
+
+            // 3. O Bisturi: Envia a configuração para o Supabase
+            // ATENÇÃO: Substitua 'configuracoes' pelo nome da sua tabela
+            // Usando o cliente do Supabase que está dentro do seu CONFIG global
+            const { data, error } = await window.supabaseClient
+                .from('configuracoes') // Salva o objeto JSON inteiro
+
+            if (error) throw error;
+
+            // 4. Feedback de Sucesso Real
+            app.showNotification('Sucesso', 'Horários atualizados no sistema e para os pacientes!', false);
+
+        } catch (error) {
+            console.error("Erro fatal ao salvar no banco:", error);
+            app.showNotification('Erro', 'Não foi possível salvar na nuvem.', true);
+        }
     }
 };
