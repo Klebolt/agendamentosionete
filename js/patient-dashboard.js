@@ -27,6 +27,7 @@ const patientApp = {
                 workDays: [1, 2, 3, 4, 5],
                 startTime: '09:00', endTime: '17:00',
                 lunchStart: '12:00', lunchEnd: '13:00',
+                saturdayStartTime: '08:00', saturdayEndTime: '13:00', // 👈 ADICIONE AQUI
                 sessionDuration: 50, buffer: 10,
                 availabilityStartDate: new Date().toISOString().split('T')[0],
                 availabilityEndDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -36,7 +37,7 @@ const patientApp = {
             // 2. Buscamos a configuração real na nuvem (Supabase) - BLINDADO COM ESPIÕES
             try {
                 const supabaseConn = window.supabaseClient || window.supabase || CONFIG.supabaseClient;
-                
+
                 if (!supabaseConn) throw new Error("Cliente Supabase não encontrado no app do paciente");
 
                 console.log("🕵️ Paciente: Buscando horários na nuvem...");
@@ -283,11 +284,20 @@ const patientApp = {
 
         while (cursor <= endDate) {
             const dateStr = cursor.toISOString().split('T')[0];
-            const isWorkDay = settings.workDays.includes(cursor.getDay());
+            const dayOfWeek = cursor.getDay(); // 0 = Dom, 1 = Seg ... 6 = Sáb
+            const isWorkDay = settings.workDays.includes(dayOfWeek);
             const isHoliday = holidays.includes(dateStr);
             const hasBookingThisDay = patientBookedDates.includes(dateStr);
 
             if (isWorkDay) {
+                // 🕵️ BISTURI: Se for sábado (6), usa os horários específicos de sábado!
+                const isSaturday = (dayOfWeek === 6);
+                const startStr = isSaturday ? (settings.saturdayStartTime || '08:00') : settings.startTime;
+                const endStr = isSaturday ? (settings.saturdayEndTime || '13:00') : settings.endTime;
+
+                const startMin = timeToMins(startStr);
+                const endMin = timeToMins(endStr);
+
                 const displayDate = cursor.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }).toUpperCase();
 
                 html += `
@@ -310,7 +320,8 @@ const patientApp = {
 
                     let currentMin = startMin;
                     while (currentMin + settings.sessionDuration <= endMin) {
-                        if (currentMin >= lunchStart && currentMin < lunchEnd) {
+                        // 🕵️ BISTURI: Só aplica pausa de almoço de segunda a sexta (!isSaturday)
+                        if (!isSaturday && currentMin >= lunchStart && currentMin < lunchEnd) {
                             currentMin = lunchEnd;
                             continue;
                         }
@@ -324,10 +335,8 @@ const patientApp = {
 
                         const isBooked = allAppointments.some(a => {
                             if (!a || !a.date) return false;
-
                             const dbTimestamp = new Date(a.date).getTime();
                             const isSameSlot = (dbTimestamp === btnTimestamp) || a.date.includes(`${dateStr}T${timeStr}`);
-
                             return isSameSlot && (!a.status || a.status === 'SCHEDULED');
                         });
 
