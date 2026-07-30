@@ -27,7 +27,7 @@ const patientApp = {
                 workDays: [1, 2, 3, 4, 5],
                 startTime: '09:00', endTime: '17:00',
                 lunchStart: '12:00', lunchEnd: '13:00',
-                saturdayStartTime: '08:00', saturdayEndTime: '13:00', // 👈 ADICIONE AQUI
+                saturdayStartTime: '08:00', saturdayEndTime: '13:00', // 👈 ADICIONADO AQUI
                 sessionDuration: 50, buffer: 10,
                 availabilityStartDate: new Date().toISOString().split('T')[0],
                 availabilityEndDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -53,8 +53,8 @@ const patientApp = {
                 if (error) {
                     console.warn("Aviso: Falha ao ler nuvem. Usando padrão.", error);
                 } else if (data && data.dados_config && Object.keys(data.dados_config).length > 0) {
-                    // Se encontrou dados válidos, substitui os horários!
-                    settings = data.dados_config;
+                    // 🕵️ BISTURI: Uso de spread para garantir que campos de sábado não sumam
+                    settings = { ...settings, ...data.dados_config };
                     localStorage.setItem(CONFIG.STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
                     console.log("✅ Horários do paciente atualizados com sucesso!");
                 } else {
@@ -273,27 +273,39 @@ const patientApp = {
                 return a.date ? a.date.split('T')[0] : '';
             });
 
-        const timeToMins = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
-        const startMin = timeToMins(settings.startTime);
-        const endMin = timeToMins(settings.endTime);
-        const lunchStart = timeToMins(settings.lunchStart);
-        const lunchEnd = timeToMins(settings.lunchEnd);
-        const step = settings.sessionDuration + settings.buffer;
+        const timeToMins = (s) => { 
+            if (!s || typeof s !== 'string') return 0;
+            const [h, m] = s.split(':').map(Number); 
+            return (h * 60) + (m || 0); 
+        };
+
+        const lunchStart = timeToMins(settings.lunchStart || '12:00');
+        const lunchEnd = timeToMins(settings.lunchEnd || '13:00');
+        const step = (settings.sessionDuration || 50) + (settings.buffer || 10);
 
         let cursor = new Date(startDate);
 
         while (cursor <= endDate) {
-            const dateStr = cursor.toISOString().split('T')[0];
+            const y = cursor.getFullYear();
+            const m = String(cursor.getMonth() + 1).padStart(2, '0');
+            const d = String(cursor.getDate()).padStart(2, '0');
+            const dateStr = `${y}-${m}-${d}`;
+            
             const dayOfWeek = cursor.getDay(); // 0 = Dom, 1 = Seg ... 6 = Sáb
             const isWorkDay = settings.workDays.includes(dayOfWeek);
             const isHoliday = holidays.includes(dateStr);
             const hasBookingThisDay = patientBookedDates.includes(dateStr);
 
             if (isWorkDay) {
-                // 🕵️ BISTURI: Se for sábado (6), usa os horários específicos de sábado!
                 const isSaturday = (dayOfWeek === 6);
-                const startStr = isSaturday ? (settings.saturdayStartTime || '08:00') : settings.startTime;
-                const endStr = isSaturday ? (settings.saturdayEndTime || '13:00') : settings.endTime;
+                
+                const satStart = (settings.saturdayStartTime && settings.saturdayStartTime.trim() !== '') ? settings.saturdayStartTime : '08:00';
+                const satEnd = (settings.saturdayEndTime && settings.saturdayEndTime.trim() !== '') ? settings.saturdayEndTime : '13:00';
+                const weekStart = (settings.startTime && settings.startTime.trim() !== '') ? settings.startTime : '09:00';
+                const weekEnd = (settings.endTime && settings.endTime.trim() !== '') ? settings.endTime : '17:00';
+
+                const startStr = isSaturday ? satStart : weekStart;
+                const endStr = isSaturday ? satEnd : weekEnd;
 
                 const startMin = timeToMins(startStr);
                 const endMin = timeToMins(endStr);
@@ -319,16 +331,15 @@ const patientApp = {
                     html += `<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">`;
 
                     let currentMin = startMin;
-                    while (currentMin + settings.sessionDuration <= endMin) {
-                        // 🕵️ BISTURI: Só aplica pausa de almoço de segunda a sexta (!isSaturday)
+                    while (currentMin + (settings.sessionDuration || 50) <= endMin) {
                         if (!isSaturday && currentMin >= lunchStart && currentMin < lunchEnd) {
                             currentMin = lunchEnd;
                             continue;
                         }
 
                         const h = Math.floor(currentMin / 60).toString().padStart(2, '0');
-                        const m = (currentMin % 60).toString().padStart(2, '0');
-                        const timeStr = `${h}:${m}`;
+                        const min = (currentMin % 60).toString().padStart(2, '0');
+                        const timeStr = `${h}:${min}`;
                         const fullDateTime = `${dateStr}T${timeStr}:00`;
 
                         const btnTimestamp = new Date(fullDateTime).getTime();
