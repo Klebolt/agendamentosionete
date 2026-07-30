@@ -462,8 +462,16 @@ const adminApp = {
     },
 
     renderSettingsView() {
-        const s = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || { workDays: [1, 2, 3, 4, 5], startTime: '09:00', endTime: '17:00', lunchStart: '12:00', lunchEnd: '13:00', sessionDuration: 50, buffer: 10, availabilityStartDate: new Date().toISOString().split('T')[0], availabilityEndDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], holidays: [] };
-        this.currentHolidays = s.holidays || [];
+        const s = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {
+            workDays: [1, 2, 3, 4, 5],
+            startTime: '09:00', endTime: '17:00',
+            lunchStart: '12:00', lunchEnd: '13:00',
+            saturdayStartTime: '08:00', saturdayEndTime: '13:00', // 👈 ADICIONADO AQUI
+            sessionDuration: 50, buffer: 10,
+            availabilityStartDate: new Date().toISOString().split('T')[0],
+            availabilityEndDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            holidays: []
+        };
         setTimeout(() => this.updateHolidaysListUI(), 50);
 
         return `
@@ -482,9 +490,18 @@ const adminApp = {
                         <div><label class="text-sm">Duração (min)</label><input type="number" id="session-duration" value="${s.sessionDuration}" class="w-full p-2 border rounded-lg"></div>
                         <div><label class="text-sm">Buffer (min)</label><input type="number" id="session-buffer" value="${s.buffer}" class="w-full p-2 border rounded-lg"></div>
                     </div>
-                    <div class="flex flex-wrap gap-2 mb-4">${[{ n: 1, l: 'Seg' }, { n: 2, l: 'Ter' }, { n: 3, l: 'Qua' }, { n: 4, l: 'Qui' }, { n: 5, l: 'Sex' }].map(d => `<label class="px-4 py-2 border rounded-lg"><input type="checkbox" value="${d.n}" class="day-checkbox mr-2" ${s.workDays.includes(d.n) ? 'checked' : ''}>${d.l}</label>`).join('')}</div>
+                    <div class="flex flex-wrap gap-2 mb-4">${[{ n: 1, l: 'Seg' }, { n: 2, l: 'Ter' }, { n: 3, l: 'Qua' }, { n: 4, l: 'Qui' }, { n: 5, l: 'Sex' }, { n: 6, l: 'Sáb' }].map(d => `<label class="px-4 py-2 border rounded-lg"><input type="checkbox" value="${d.n}" class="day-checkbox mr-2" ${s.workDays.includes(d.n) ? 'checked' : ''}>${d.l}</label>`).join('')}</div>
                     <div class="grid grid-cols-2 gap-4"><div class="p-4 border rounded-xl"><label class="text-sm">Início/Fim do Dia</label><div class="flex gap-2 mt-2"><input type="time" id="start-time" value="${s.startTime}" class="p-2 border rounded-lg w-full"><input type="time" id="end-time" value="${s.endTime}" class="p-2 border rounded-lg w-full"></div></div><div class="p-4 border rounded-xl"><label class="text-sm">Início/Fim do Almoço</label><div class="flex gap-2 mt-2"><input type="time" id="lunch-start" value="${s.lunchStart}" class="p-2 border rounded-lg w-full"><input type="time" id="lunch-end" value="${s.lunchEnd}" class="p-2 border rounded-lg w-full"></div></div></div>
                 </div>
+                <div class="p-4 border rounded-xl mt-4 bg-slate-50">
+                    <label class="text-sm font-bold text-slate-700">Início/Fim aos Sábados</label>
+                    <div class="flex gap-2 mt-2">
+                        <input type="time" id="sat-start-time" value="${s.saturdayStartTime || '08:00'}" class="p-2 border rounded-lg w-full bg-white">
+                        <input type="time" id="sat-end-time" value="${s.saturdayEndTime || '13:00'}" class="p-2 border rounded-lg w-full bg-white">
+                    </div>
+                </div>
+
+
                 <button onclick="adminApp.saveSettings()" class="w-full py-4 bg-slate-900 text-white rounded-xl font-bold">Salvar Configurações</button>
             </div>
         `;
@@ -505,6 +522,8 @@ const adminApp = {
                 endTime: document.getElementById('end-time').value,
                 lunchStart: document.getElementById('lunch-start').value,
                 lunchEnd: document.getElementById('lunch-end').value,
+                saturdayStartTime: document.getElementById('sat-start-time').value, // 👈 ADICIONE AQUI
+                saturdayEndTime: document.getElementById('sat-end-time').value,     // 👈 ADICIONE AQUI
                 sessionDuration: +document.getElementById('session-duration').value,
                 buffer: +document.getElementById('session-buffer').value,
                 availabilityStartDate: document.getElementById('avail-start').value,
