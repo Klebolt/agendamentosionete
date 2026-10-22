@@ -1,12 +1,13 @@
 /**
  * MÓDULO DO PSICÓLOGO (Administrador)
- * * Atualizado com: Relatórios Gerenciais Avançados, Exportação para PDF, Soft Delete e Expediente Personalizado por Dia na Nuvem.
+ * * Atualizado com: Agendamento Manual/Recorrente, WhatsApp Pré-preenchido, Busca de Pacientes em Tempo Real, Edição/PDF de Prontuário e Expediente por Dia.
  */
 
 const adminApp = {
     currentTab: 'agenda',
     agendaSubTab: 'upcoming', 
     currentHolidays: [],
+    patientsCache: [],
 
     async renderDashboard() {
         const user = authService.getCurrentUser();
@@ -68,7 +69,7 @@ const adminApp = {
     },
 
     // ==========================================
-    // 📊 NOVO: VISÃO DE RELATÓRIOS EXECUTIVOS
+    // 📊 VISÃO DE RELATÓRIOS EXECUTIVOS
     // ==========================================
     renderReportsView() {
         setTimeout(() => this.generateReport(), 50);
@@ -76,10 +77,11 @@ const adminApp = {
         return `
             <div class="max-w-5xl mx-auto space-y-6">
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 print:hidden">
-                    <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center">
+                    <h2 class="text-lg font-bold text-slate-800 mb-1 flex items-center">
                         <svg class="w-5 h-5 mr-2 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                         Filtros de Exportação
                     </h2>
+                    <p class="text-xs text-slate-500 mb-4">Legenda: Selecione o período desejado para visualizar as estatísticas ou exportar o relatório oficial em PDF.</p>
                     
                     <div class="flex flex-col md:flex-row gap-4 items-end">
                         <div class="flex-1 w-full">
@@ -127,7 +129,7 @@ const adminApp = {
         } else if (period === 'monthly') {
             container.innerHTML = `<label class="block text-sm font-medium text-slate-700 mb-1">Selecione o Mês</label><input type="month" id="report-date-val" class="w-full p-2.5 border border-slate-200 rounded-lg outline-none">`;
         } else if (period === 'yearly') {
-            container.innerHTML = `<label class="block text-sm font-medium text-slate-700 mb-1">Digite o Ano</label><input type="number" id="report-date-val" placeholder="Ex: 2024" min="2020" max="2050" class="w-full p-2.5 border border-slate-200 rounded-lg outline-none">`;
+            container.innerHTML = `<label class="block text-sm font-medium text-slate-700 mb-1">Digite o Ano</label><input type="number" id="report-date-val" placeholder="Ex: 2026" min="2020" max="2050" class="w-full p-2.5 border border-slate-200 rounded-lg outline-none">`;
         } else {
             container.classList.add('hidden');
         }
@@ -156,15 +158,12 @@ const adminApp = {
 
         filteredApps.sort((a,b) => new Date(a.date) - new Date(b.date));
 
-        // 3. Calcula as Métricas (KPIs) usando o sistema de Status
         const now = new Date();
         const scheduled = filteredApps.filter(a => a.status === 'SCHEDULED' && new Date(a.date) >= now);
         const completed = filteredApps.filter(a => (!a.status || a.status === 'SCHEDULED') && new Date(a.date) < now);
         const cancelledPat = filteredApps.filter(a => a.status === 'CANCELLED_BY_PATIENT');
         const cancelledPsy = filteredApps.filter(a => a.status === 'CANCELLED_BY_PSYCHOLOGIST');
         const totalCancelled = cancelledPat.length + cancelledPsy.length;
-        
-        const uniquePatientIds = [...new Set(filteredApps.map(a => a.patientId))];
 
         const reportContainer = document.getElementById('printable-report');
         
@@ -269,13 +268,12 @@ const adminApp = {
     },
     
     // ==========================================
-    // 📅 VISÃO DE AGENDA 
+    // 📅 VISÃO DE AGENDA (COM AGENDAMENTO MANUAL E WHATSAPP PRÉ-PRONTO)
     // ==========================================
     async renderAgendaView() {
         const appointments = await dbService.getAppointments(null, ROLES.PSYCHOLOGIST);
         const now = new Date();
         
-        // CIRURGIA: Lendo o link que a Dra. Ionete salvou no painel!
         const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {};
         const dynamicMeetUrl = settings.meetUrl || CONFIG.MEET_URL;
 
@@ -283,9 +281,18 @@ const adminApp = {
         const pastApps = appointments.filter(a => new Date(a.date) < now || (a.status && a.status.startsWith('CANCELLED'))).sort((a,b) => new Date(b.date) - new Date(a.date));
 
         let html = `
-            <div class="max-w-4xl mx-auto mb-6 flex space-x-4 border-b border-slate-200 print:hidden">
-                <button onclick="adminApp.switchAgendaSubTab('upcoming')" class="pb-3 px-2 text-sm font-bold transition-colors ${this.agendaSubTab === 'upcoming' ? 'text-sky-600 border-b-2 border-sky-600' : 'text-slate-500 hover:text-slate-800'}">Próximos (${upcomingApps.length})</button>
-                <button onclick="adminApp.switchAgendaSubTab('past')" class="pb-3 px-2 text-sm font-bold transition-colors ${this.agendaSubTab === 'past' ? 'text-sky-600 border-b-2 border-sky-600' : 'text-slate-500 hover:text-slate-800'}">Histórico (${pastApps.length})</button>
+            <div class="max-w-4xl mx-auto mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-3 print:hidden">
+                <div>
+                    <div class="flex space-x-4">
+                        <button onclick="adminApp.switchAgendaSubTab('upcoming')" class="pb-2 px-2 text-sm font-bold transition-colors ${this.agendaSubTab === 'upcoming' ? 'text-sky-600 border-b-2 border-sky-600' : 'text-slate-500 hover:text-slate-800'}">Próximos (${upcomingApps.length})</button>
+                        <button onclick="adminApp.switchAgendaSubTab('past')" class="pb-2 px-2 text-sm font-bold transition-colors ${this.agendaSubTab === 'past' ? 'text-sky-600 border-b-2 border-sky-600' : 'text-slate-500 hover:text-slate-800'}">Histórico (${pastApps.length})</button>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">Legenda: Clique no ícone do WhatsApp ao lado do paciente para enviar confirmação com 1 clique.</p>
+                </div>
+                <button onclick="adminApp.openNewAppointmentModal()" class="px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors flex items-center justify-center shrink-0">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    Novo Agendamento Manual
+                </button>
             </div>
         `;
 
@@ -300,8 +307,13 @@ const adminApp = {
             const date = new Date(appt.date);
             let phoneStr = patient?.phone || '';
             let cleanPhone = phoneStr.replace(/\D/g, '');
-            let waLink = cleanPhone ? `https://wa.me/55${cleanPhone}` : null;
-            let waButton = waLink ? `<a href="${waLink}" target="_blank" title="Chamar no WhatsApp" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-100 ml-2"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12.031 21.488l-3.351.879.882-3.267A9.953 9.953 0 012.046 12c0-5.514 4.486-10 10-10s10 4.486 10 10-4.486 10-10 10a9.952 9.952 0 01-5.015-1.512zM12.046 4c-4.411 0-8 3.589-8 8a7.962 7.962 0 004.148 6.98l.583.336-.58 2.148 2.2-2.148.583.336A7.96 7.96 0 0012.046 20c4.411 0 8-3.589 8-8s-3.589-8-8-8zm4.12 10.963c-.226-.113-1.336-.659-1.543-.734-.207-.075-.358-.113-.509.113-.15.226-.583.734-.715.885-.132.15-.264.17-.49.057-1.127-.565-2.004-1.28-2.674-2.423-.132-.226.132-.207.348-.639.075-.15.038-.283-.019-.396-.057-.113-.509-1.226-.697-1.678-.184-.442-.369-.382-.509-.387-.132-.005-.283-.005-.433-.005-.15 0-.396.057-.603.283-.207.226-.791.772-.791 1.884s.81 2.185.923 2.336c.113.15 1.59 2.423 3.847 3.396 1.157.498 1.642.545 2.188.452.546-.093 1.336-.545 1.524-1.073.188-.528.188-.98.132-1.073-.057-.094-.208-.15-.434-.264z"/></svg></a>` : '';
+            const firstName = patient?.name ? patient.name.split(' ')[0] : 'Olá';
+            const dateFmt = date.toLocaleDateString('pt-BR');
+            const timeFmt = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            const confirmMsg = encodeURIComponent(`Olá ${firstName}, tudo bem? Passando para confirmar nossa sessão agendada para ${dateFmt} às ${timeFmt}. Segue o link da nossa sala virtual: ${dynamicMeetUrl}`);
+
+            let waLink = cleanPhone ? `https://wa.me/55${cleanPhone}?text=${confirmMsg}` : null;
+            let waButton = waLink ? `<a href="${waLink}" target="_blank" title="Enviar confirmação por WhatsApp" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-100 ml-2"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12.031 21.488l-3.351.879.882-3.267A9.953 9.953 0 012.046 12c0-5.514 4.486-10 10-10s10 4.486 10 10-4.486 10-10 10a9.952 9.952 0 01-5.015-1.512zM12.046 4c-4.411 0-8 3.589-8 8a7.962 7.962 0 004.148 6.98l.583.336-.58 2.148 2.2-2.148.583.336A7.96 7.96 0 0012.046 20c4.411 0 8-3.589 8-8s-3.589-8-8-8zm4.12 10.963c-.226-.113-1.336-.659-1.543-.734-.207-.075-.358-.113-.509.113-.15.226-.583.734-.715.885-.132.15-.264.17-.49.057-1.127-.565-2.004-1.28-2.674-2.423-.132-.226.132-.207.348-.639.075-.15.038-.283-.019-.396-.057-.113-.509-1.226-.697-1.678-.184-.442-.369-.382-.509-.387-.132-.005-.283-.005-.433-.005-.15 0-.396.057-.603.283-.207.226-.791.772-.791 1.884s.81 2.185.923 2.336c.113.15 1.59 2.423 3.847 3.396 1.157.498 1.642.545 2.188.452.546-.093 1.336-.545 1.524-1.073.188-.528.188-.98.132-1.073-.057-.094-.208-.15-.434-.264z"/></svg></a>` : '';
 
             if (this.agendaSubTab === 'past') {
                 const notes = await dbService.getNotesByPatient(appt.patientId);
@@ -363,7 +375,109 @@ const adminApp = {
         return html + `<div class="max-w-4xl mx-auto">${rows.join('')}</div>`;
     },
 
-    // AQUI: Atualizado cirurgicamente para usar o dbService do Supabase
+    // MODAL DE AGENDAMENTO MANUAL E RECORRENTE PELO ADMIN
+    async openNewAppointmentModal() {
+        const patients = await dbService.getAllPatients();
+        const existing = document.getElementById('new-manual-app-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'new-manual-app-modal';
+        modal.className = 'fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 view-transition animate-fade-in';
+        modal.innerHTML = `
+            <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6">
+                <div class="flex justify-between items-start mb-4 border-b border-slate-100 pb-3">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-900">Novo Agendamento Manual</h3>
+                        <p class="text-xs text-slate-500 mt-0.5">Legenda: Agende um paciente diretamente ou crie sessões semanais recorrentes.</p>
+                    </div>
+                    <button onclick="document.getElementById('new-manual-app-modal').remove()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase mb-1">1. Selecione o Paciente</label>
+                        <select id="manual-app-patient" class="w-full p-2.5 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-sky-500 bg-white">
+                            <option value="">-- Escolha um paciente --</option>
+                            ${patients.map(p => `<option value="${p.id}">${p.name} (${p.email})</option>`).join('')}
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">2. Data da 1ª Sessão</label>
+                            <input type="date" id="manual-app-date" value="${new Date().toISOString().split('T')[0]}" class="w-full p-2.5 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-sky-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">3. Horário</label>
+                            <input type="time" id="manual-app-time" value="14:00" class="w-full p-2.5 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-sky-500">
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                        <label class="block text-xs font-bold text-slate-700 uppercase mb-1">4. Repetição Semanal (Opcional)</label>
+                        <p class="text-[11px] text-slate-400 mb-2">Legenda: Escolha se deseja repetir este agendamento no mesmo dia da semana e horário pelas próximas semanas.</p>
+                        <select id="manual-app-repeat" class="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-sky-500">
+                            <option value="1">Apenas esta sessão (Avulsa)</option>
+                            <option value="2">Repetir por 2 semanas seguidas</option>
+                            <option value="4">Repetir por 4 semanas (1 Mês)</option>
+                            <option value="8">Repetir por 8 semanas (2 Meses)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-100">
+                    <button onclick="document.getElementById('new-manual-app-modal').remove()" class="px-4 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
+                    <button id="btn-save-manual-app" onclick="adminApp.saveManualAppointment()" class="px-6 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold shadow-md transition-colors">
+                        Confirmar Agendamento
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    },
+
+    async saveManualAppointment() {
+        const patientId = document.getElementById('manual-app-patient').value;
+        const dateVal = document.getElementById('manual-app-date').value;
+        const timeVal = document.getElementById('manual-app-time').value;
+        const repeatCount = parseInt(document.getElementById('manual-app-repeat').value, 10) || 1;
+
+        if (!patientId || !dateVal || !timeVal) {
+            app.showNotification("Atenção", "Preencha o paciente, a data e o horário.", true);
+            return;
+        }
+
+        const btn = document.getElementById('btn-save-manual-app');
+        btn.disabled = true;
+        btn.innerText = 'Agendando...';
+
+        try {
+            const [y, m, d] = dateVal.split('-').map(Number);
+            for (let i = 0; i < repeatCount; i++) {
+                const targetDate = new Date(y, m - 1, d + (i * 7));
+                const ty = targetDate.getFullYear();
+                const tm = String(targetDate.getMonth() + 1).padStart(2, '0');
+                const td = String(targetDate.getDate()).padStart(2, '0');
+                const fullIso = `${ty}-${tm}-${td}T${timeVal}:00`;
+
+                await dbService.createAppointment({
+                    patientId: patientId,
+                    date: fullIso,
+                    status: 'SCHEDULED'
+                });
+            }
+
+            document.getElementById('new-manual-app-modal').remove();
+            app.showNotification("Sucesso!", repeatCount > 1 ? `${repeatCount} sessões agendadas com sucesso.` : "Sessão agendada com sucesso.", false);
+            this.renderDashboard();
+        } catch (error) {
+            app.showNotification("Erro", error.message, true);
+            btn.disabled = false;
+            btn.innerText = 'Confirmar Agendamento';
+        }
+    },
+
     async deleteAppointment(appId) {
         if(confirm("Tem certeza que deseja cancelar esta sessão? O paciente não a verá mais e o horário será liberado.")) {
             try {
@@ -382,7 +496,8 @@ const adminApp = {
         modal.className = 'fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4';
         modal.innerHTML = `
             <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6">
-                <h3 class="text-xl font-bold text-slate-900 mb-2">Reagendar Sessão</h3>
+                <h3 class="text-xl font-bold text-slate-900 mb-1">Reagendar Sessão</h3>
+                <p class="text-xs text-slate-500 mb-4">Legenda: Escolha a nova data e horário para transferir este atendimento.</p>
                 <input type="datetime-local" id="new-app-date" value="${currentDateStr.substring(0, 16)}" class="w-full p-3 border border-slate-200 rounded-xl mb-6 outline-none">
                 <div class="flex justify-end space-x-3">
                     <button onclick="document.getElementById('edit-modal').remove()" class="px-4 py-2 font-bold">Cancelar</button>
@@ -393,7 +508,6 @@ const adminApp = {
         document.body.appendChild(modal);
     },
 
-    // AQUI: Atualizado cirurgicamente para usar o dbService do Supabase
     async saveEditedAppointment(appId) {
         const newVal = document.getElementById('new-app-date').value;
         if(!newVal) return;
@@ -408,25 +522,84 @@ const adminApp = {
         }
     },
 
+    // ==========================================
+    // 👥 VISÃO DE PACIENTES (COM BUSCA EM TEMPO REAL)
+    // ==========================================
     async renderPatientsView() {
-        const patients = await dbService.getAllPatients();
+        this.patientsCache = await dbService.getAllPatients();
         return `
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden max-w-4xl mx-auto">
-                <table class="w-full text-left">
-                    <thead class="bg-slate-50 border-b border-slate-200">
-                        <tr><th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Paciente</th><th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Contato</th><th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">Ações</th></tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        ${patients.map(p => `
-                            <tr class="hover:bg-slate-50"><td class="px-6 py-4 font-semibold text-slate-800">${p.name}</td><td class="px-6 py-4 text-slate-500 text-sm"><p>${p.email}</p><p class="text-xs text-slate-400">${p.phone || ''}</p></td><td class="px-6 py-4 text-right"><button onclick="adminApp.openPatientRecord('${p.id}')" class="text-sky-600 font-bold text-sm bg-sky-50 px-3 py-1.5 rounded-lg">Prontuário</button></td></tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+            <div class="max-w-4xl mx-auto space-y-4">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <h2 class="text-lg font-bold text-slate-800">Diretório de Pacientes</h2>
+                            <p class="text-xs text-slate-500 mt-0.5">Legenda: Digite no campo ao lado para filtrar pacientes por nome, e-mail ou telefone instantaneamente.</p>
+                        </div>
+                        <div class="relative w-full sm:w-72">
+                            <input type="text" id="patient-search-input" oninput="adminApp.filterPatientsTable()" placeholder="Buscar nome, e-mail ou tel..." class="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-sky-500 bg-slate-50/50">
+                            <svg class="w-4 h-4 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-slate-50 border-b border-slate-200">
+                            <tr>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Paciente</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Contato</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="patients-table-body" class="divide-y divide-slate-100">
+                            ${this.buildPatientsRows(this.patientsCache)}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         `;
     },
 
+    buildPatientsRows(list) {
+        if (!list || list.length === 0) {
+            return `<tr><td colspan="3" class="px-6 py-8 text-center text-slate-400 text-sm italic">Nenhum paciente encontrado com esse termo.</td></tr>`;
+        }
+        return list.map(p => `
+            <tr class="hover:bg-slate-50 transition-colors">
+                <td class="px-6 py-4 font-semibold text-slate-800">${p.name}</td>
+                <td class="px-6 py-4 text-slate-500 text-sm">
+                    <p>${p.email}</p>
+                    <p class="text-xs text-slate-400">${p.phone || ''}</p>
+                </td>
+                <td class="px-6 py-4 text-right">
+                    <button onclick="adminApp.openPatientRecord('${p.id}')" class="text-sky-600 hover:bg-sky-100 font-bold text-sm bg-sky-50 px-3.5 py-2 rounded-lg transition-colors">
+                        Prontuário
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    },
+
+    filterPatientsTable() {
+        const query = (document.getElementById('patient-search-input')?.value || '').toLowerCase().trim();
+        const tbody = document.getElementById('patients-table-body');
+        if (!tbody) return;
+
+        const filtered = this.patientsCache.filter(p =>
+            (p.name && p.name.toLowerCase().includes(query)) ||
+            (p.email && p.email.toLowerCase().includes(query)) ||
+            (p.phone && p.phone.toLowerCase().includes(query))
+        );
+        tbody.innerHTML = this.buildPatientsRows(filtered);
+    },
+
+    // ==========================================
+    // 📝 PRONTUÁRIO (COM EDIÇÃO DE NOTAS E EXPORTAÇÃO PDF INDIVIDUAL)
+    // ==========================================
     async openPatientRecord(patientId) {
+        const existing = document.getElementById('patient-modal');
+        if (existing) existing.remove();
+
         const patient = await dbService.getUserById(patientId);
         const notes = await dbService.getNotesByPatient(patientId);
         const modal = document.createElement('div');
@@ -434,22 +607,120 @@ const adminApp = {
         modal.className = 'fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4';
         modal.innerHTML = `
             <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
-                <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                    <div><h3 class="text-xl font-bold">${patient.name}</h3><p class="text-xs text-slate-500">Histórico de Evolução</p></div>
-                    <button onclick="document.getElementById('patient-modal').remove()" class="text-3xl">&times;</button>
+                <div class="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 rounded-t-2xl">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-900">${patient.name}</h3>
+                        <p class="text-xs text-slate-500">Legenda: Histórico sigiloso de evolução clínica. Você pode editar anotações ou exportar este prontuário em PDF.</p>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button onclick="adminApp.printPatientRecord('${patientId}')" class="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold flex items-center shadow-sm transition-colors">
+                            <svg class="w-4 h-4 mr-1.5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                            Exportar PDF
+                        </button>
+                        <button onclick="document.getElementById('patient-modal').remove()" class="text-3xl text-slate-400 hover:text-slate-600 leading-none px-2">&times;</button>
+                    </div>
                 </div>
                 <div class="p-6 overflow-y-auto flex-1 space-y-6">
                     <div class="space-y-4">
-                        ${notes.map(n => `<div class="bg-slate-50 p-4 rounded-xl border"><span class="text-[10px] font-bold text-slate-400">${new Date(n.date).toLocaleString('pt-BR')}</span><p class="mt-2 text-sm">${n.text}</p></div>`).reverse().join('')}
+                        ${notes.length === 0 ? '<p class="text-center text-slate-400 text-sm italic py-4">Nenhuma evolução registrada para este paciente.</p>' : notes.map(n => `
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200/80">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-[11px] font-bold text-slate-400">${new Date(n.date).toLocaleString('pt-BR')}</span>
+                                    <button onclick="adminApp.toggleEditNote('${n.id}')" class="text-xs font-bold text-sky-600 hover:text-sky-800">Editar anotação</button>
+                                </div>
+                                <p id="note-text-display-${n.id}" class="text-sm text-slate-700 whitespace-pre-line">${app.escapeHTML(n.text)}</p>
+                                <div id="note-edit-box-${n.id}" class="hidden mt-3 space-y-2">
+                                    <textarea id="note-edit-input-${n.id}" rows="3" class="w-full p-3 border border-sky-300 rounded-lg text-sm bg-white outline-none">${app.escapeHTML(n.text)}</textarea>
+                                    <div class="flex justify-end gap-2">
+                                        <button onclick="adminApp.toggleEditNote('${n.id}')" class="px-3 py-1.5 text-xs font-bold text-slate-500">Cancelar</button>
+                                        <button onclick="adminApp.saveEditedNote('${n.id}', '${patientId}')" class="px-4 py-1.5 bg-sky-600 text-white rounded-lg text-xs font-bold">Salvar Correção</button>
+                                    </div>
+                                </div>
+                            </div>
+                        `).reverse().join('')}
                     </div>
                     <div class="mt-8 border-t border-slate-100 pt-6">
-                        <textarea id="new-note-text" rows="4" class="w-full p-4 border rounded-xl outline-none text-sm bg-slate-50" placeholder="Anotações da sessão..."></textarea>
+                        <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Nova Evolução Clínica</label>
+                        <textarea id="new-note-text" rows="4" class="w-full p-4 border rounded-xl outline-none text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500" placeholder="Digite as anotações da sessão..."></textarea>
                     </div>
                 </div>
-                <div class="p-6 border-t border-slate-100 flex justify-end bg-slate-50"><button onclick="adminApp.saveNote('${patientId}')" class="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold">Salvar</button></div>
+                <div class="p-6 border-t border-slate-100 flex justify-end bg-slate-50 rounded-b-2xl">
+                    <button onclick="adminApp.saveNote('${patientId}')" class="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-sm">Salvar Nova Evolução</button>
+                </div>
             </div>
         `;
         document.body.appendChild(modal);
+    },
+
+    toggleEditNote(noteId) {
+        const displayEl = document.getElementById(`note-text-display-${noteId}`);
+        const editBox = document.getElementById(`note-edit-box-${noteId}`);
+        if (!displayEl || !editBox) return;
+        displayEl.classList.toggle('hidden');
+        editBox.classList.toggle('hidden');
+    },
+
+    async saveEditedNote(noteId, patientId) {
+        const newText = document.getElementById(`note-edit-input-${noteId}`)?.value || '';
+        if (!newText.trim()) return;
+        try {
+            await dbService.updatePatientNote(noteId, newText);
+            app.showNotification("Atualizado", "Anotação corrigida com sucesso.", false);
+            this.openPatientRecord(patientId);
+        } catch (err) {
+            app.showNotification("Erro", err.message, true);
+        }
+    },
+
+    async printPatientRecord(patientId) {
+        const patient = await dbService.getUserById(patientId);
+        const notes = await dbService.getNotesByPatient(patientId);
+        const printWin = window.open('', '_blank', 'width=800,height=700');
+        if (!printWin) return;
+
+        const notesHtml = notes.length === 0
+            ? '<p style="color:#64748b;font-style:italic;">Nenhum registro clínico encontrado.</p>'
+            : notes.slice().reverse().map(n => `
+                <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:12px;background:#f8fafc;">
+                    <div style="font-size:11px;font-weight:bold;color:#64748b;margin-bottom:6px;">Data do Registro: ${new Date(n.date).toLocaleString('pt-BR')}</div>
+                    <div style="font-size:13px;color:#1e293b;white-space:pre-line;line-height:1.5;">${app.escapeHTML(n.text)}</div>
+                </div>
+            `).join('');
+
+        printWin.document.write(`
+            <!DOCTYPE html>
+            <html lang="pt-br">
+            <head>
+                <meta charset="UTF-8">
+                <title>Prontuário - ${patient.name}</title>
+                <style>
+                    body { font-family: 'Inter', Arial, sans-serif; padding: 32px; color: #0f172a; }
+                    .header { border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
+                    .patient-box { background: #f1f5f9; padding: 16px; border-radius: 10px; margin-bottom: 24px; font-size: 13px; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div>
+                        <h1 style="margin:0;font-size:24px;">Psi.Ionete</h1>
+                        <p style="margin:4px 0 0;font-size:12px;color:#475569;">PRONTUÁRIO PSICOLÓGICO INDIVIDUAL - DOCUMENTO CONFIDENCIAL</p>
+                    </div>
+                    <div style="text-align:right;font-size:11px;color:#64748b;">
+                        Emitido em: ${new Date().toLocaleString('pt-BR')}
+                    </div>
+                </div>
+                <div class="patient-box">
+                    <strong>Paciente:</strong> ${patient.name}<br>
+                    <strong>E-mail:</strong> ${patient.email}<br>
+                    <strong>Telefone:</strong> ${patient.phone || 'Não informado'}
+                </div>
+                <h3 style="font-size:15px;margin-bottom:12px;">Histórico de Evolução Clínica</h3>
+                ${notesHtml}
+                <script>window.onload = () => { window.print(); };</script>
+            </body>
+            </html>
+        `);
+        printWin.document.close();
     },
 
     async saveNote(patientId) {
@@ -483,7 +754,6 @@ const adminApp = {
         let savedLocal = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {};
         let s = { ...defaultSettings, ...savedLocal };
 
-        // Busca na nuvem (Supabase) para garantir que o painel mostre sempre o que está em produção
         try {
             const supabaseConn = window.supabaseClient || window.supabase || CONFIG.supabaseClient;
             if (supabaseConn) {
@@ -502,7 +772,6 @@ const adminApp = {
             console.warn("Aviso ao ler configurações da nuvem no Admin:", err);
         }
 
-        // Inicializa a agenda individual por dia da semana se ainda não existir
         const daysInfo = [
             { id: 1, name: 'Segunda-feira', short: 'Seg' },
             { id: 2, name: 'Terça-feira', short: 'Ter' },
@@ -546,7 +815,6 @@ const adminApp = {
                 <div id="day-row-${d.id}" class="p-4 rounded-xl border transition-all ${dayCfg.active ? 'bg-white border-sky-200 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-60'}">
                     <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                         
-                        <!-- Coluna 1: Ativar/Desativar Dia -->
                         <div class="flex items-center justify-between lg:w-48 shrink-0">
                             <label class="inline-flex items-center cursor-pointer select-none">
                                 <input type="checkbox" id="day-active-${d.id}" value="${d.id}" 
@@ -560,7 +828,6 @@ const adminApp = {
                             </span>
                         </div>
 
-                        <!-- Coluna 2: Início e Fim do Expediente -->
                         <div id="day-controls-${d.id}" class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 ${dayCfg.active ? '' : 'pointer-events-none'}">
                             <div class="bg-slate-50 p-3 rounded-lg border border-slate-200/80">
                                 <span class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Horário de Funcionamento</span>
@@ -577,7 +844,6 @@ const adminApp = {
                                 </div>
                             </div>
 
-                            <!-- Coluna 3: Pausa de Almoço / Intervalo -->
                             <div class="bg-slate-50 p-3 rounded-lg border border-slate-200/80">
                                 <div class="flex items-center justify-between mb-1.5">
                                     <label class="inline-flex items-center cursor-pointer select-none">
@@ -610,7 +876,6 @@ const adminApp = {
         return `
             <div class="max-w-4xl mx-auto space-y-6 pb-12">
                 
-                <!-- CABEÇALHO EXPLICATIVO -->
                 <div class="bg-sky-50 border border-sky-100 rounded-2xl p-5 flex items-start gap-4">
                     <div class="p-2.5 bg-sky-100 text-sky-600 rounded-xl shrink-0 mt-0.5">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -623,7 +888,6 @@ const adminApp = {
                     </div>
                 </div>
 
-                <!-- 1. LINK DA REUNIÃO -->
                 <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
                     <div class="mb-4">
                         <h3 class="text-lg font-bold text-slate-800 flex items-center">
@@ -637,7 +901,6 @@ const adminApp = {
                     <input type="url" id="custom-meet-url" value="${s.meetUrl || CONFIG.MEET_URL}" placeholder="https://meet.google.com/..." class="w-full p-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-sky-500 bg-slate-50/50">
                 </div>
 
-                <!-- 2. PERÍODO E FERIADOS -->
                 <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
                     <div class="mb-4">
                         <h3 class="text-lg font-bold text-slate-800 flex items-center">
@@ -675,7 +938,6 @@ const adminApp = {
                     </div>
                 </div>
 
-                <!-- 3. DURAÇÃO E INTERVALO ENTRE SESSÕES -->
                 <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
                     <div class="mb-4">
                         <h3 class="text-lg font-bold text-slate-800 flex items-center">
@@ -701,7 +963,6 @@ const adminApp = {
                     </div>
                 </div>
 
-                <!-- 4. EXPEDIENTE POR DIA DA SEMANA -->
                 <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
                     <div class="mb-6">
                         <h3 class="text-lg font-bold text-slate-800 flex items-center">
@@ -718,7 +979,6 @@ const adminApp = {
                     </div>
                 </div>
 
-                <!-- BOTÃO SALVAR -->
                 <button id="btn-save-settings" onclick="adminApp.saveSettings()" class="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-base shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                     Salvar Configurações e Atualizar Agenda dos Clientes
@@ -827,7 +1087,6 @@ const adminApp = {
             const meetUrlVal = document.getElementById('custom-meet-url').value;
             CONFIG.MEET_URL = meetUrlVal;
 
-            // Mantém propriedades antigas preenchidas para compatibilidade 100% com o restante do código
             const refDay = customSchedule[1] || { start: '09:00', end: '17:00', lunchStart: '12:00', lunchEnd: '13:00' };
             const satDay = customSchedule[6] || { start: '08:00', end: '13:00' };
 
@@ -848,10 +1107,8 @@ const adminApp = {
                 holidays: this.currentHolidays
             };
 
-            // 1. Salva no LocalStorage
             localStorage.setItem(CONFIG.STORAGE_KEYS.SETTINGS, JSON.stringify(s));
 
-            // 2. Salva no Supabase (tabela configuracoes, id = 1) para refletir imediatamente para todos os pacientes
             const supabaseConn = window.supabaseClient || window.supabase || CONFIG.supabaseClient;
             if (supabaseConn) {
                 const { data: updatedRows, error: updateError } = await supabaseConn
@@ -862,7 +1119,6 @@ const adminApp = {
 
                 if (updateError) throw updateError;
 
-                // Caso a linha id=1 ainda não exista na tabela, insere automaticamente
                 if (!updatedRows || updatedRows.length === 0) {
                     const { error: insertError } = await supabaseConn
                         .from('configuracoes')
