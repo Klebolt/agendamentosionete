@@ -1,7 +1,7 @@
 /**
  * ORQUESTRADOR PRINCIPAL (Router/App)
  * * Controla qual tela deve ser exibida e gerencia eventos globais.
- * * Atualizado: Motor de Cadastro e Recuperação plugados no Supabase.
+ * * Atualizado: Motor de Cadastro, Modal de TCLE e Recuperação plugados no Supabase.
  */
 
 const app = {
@@ -51,16 +51,52 @@ const app = {
         }
     },
 
+    openTermsModal(e) {
+        if (e) e.preventDefault();
+        const existing = document.getElementById('tcle-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'tcle-modal';
+        modal.className = 'fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 view-transition animate-fade-in';
+        modal.innerHTML = `
+            <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-slate-100">
+                <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900">Termo de Consentimento Livre e Esclarecido (TCLE)</h3>
+                        <p class="text-xs text-slate-500 mt-0.5">Legenda: Leia atentamente as diretrizes éticas e de privacidade antes de confirmar seu cadastro.</p>
+                    </div>
+                    <button type="button" onclick="document.getElementById('tcle-modal').remove()" class="text-slate-400 hover:text-slate-600 text-3xl leading-none">&times;</button>
+                </div>
+                <div class="p-6 overflow-y-auto flex-1 space-y-4 text-sm text-slate-600 leading-relaxed">
+                    <div class="bg-sky-50 border border-sky-100 p-3.5 rounded-xl text-xs text-sky-900">
+                        <strong>Profissional Responsável:</strong> Psicóloga Clínica Ionete | CRP 06/226283<br>
+                        <strong>Abordagem:</strong> Abordagem Sistêmica - Acompanhamento Psicológico e Terapêutico.
+                    </div>
+                    <p><strong>1. Objetivo e Funcionamento Online:</strong> Este sistema destina-se ao agendamento e acompanhamento psicológico realizado de forma síncrona (por videochamada), em conformidade com as diretrizes do Conselho Federal de Psicologia (Resolução CFP nº 09/2024) e a Lei Geral de Proteção de Dados (LGPD - Lei nº 13.709/2018).</p>
+                    <p><strong>2. Sigilo e Confidencialidade:</strong> Todas as informações compartilhadas durante as sessões, bem como os registros de prontuário eletrônico neste portal, são estritamente confidenciais e protegidos pelo Código de Ética Profissional do Psicólogo. Recomenda-se que o paciente realize as sessões em local privado e utilize fones de ouvido.</p>
+                    <p><strong>3. Política de Agendamento e Cancelamento:</strong> Os agendamentos e reagendamentos pela plataforma podem ser realizados livremente com até <strong>24 horas de antecedência</strong> do horário marcado. Caso precise cancelar com menos de 24 horas, o paciente deverá comunicar diretamente a profissional via WhatsApp.</p>
+                    <p><strong>4. Proteção de Dados (LGPD):</strong> Seus dados cadastrais (nome, e-mail e telefone) são utilizados exclusivamente para identificação clínica, comunicação sobre suas consultas e envio de confirmações de agendamento.</p>
+                </div>
+                <div class="p-5 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row justify-end gap-3">
+                    <button type="button" onclick="document.getElementById('tcle-modal').remove()" class="px-5 py-2.5 text-sm font-bold text-slate-600 hover:text-slate-800">Fechar</button>
+                    <button type="button" onclick="const cb = document.getElementById('reg-terms'); if(cb) cb.checked = true; document.getElementById('tcle-modal').remove();" class="px-6 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-xl shadow-md transition-colors">
+                        Li e Concordo com os Termos
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    },
+
     renderAuthView(view = 'login') {
         this.nav.classList.add('hidden');
         let formContent = '';
 
         if (view === 'login') {
             formContent = `
-
-
             <div class="profile-container">
-                        <img src="img/IMAGEM_PROFISSIONAL_LOGINNNN.jpeg" alt="Psi. Ionete" class="profile-image">
+                        <img src="img/IMAGEM_PROFISSIONAL_LOGINN.jpeg" alt="Psi. Ionete" class="profile-image">
                         <h2 class="profile-title">Psy.Ionete</h2>
                         <p class="profile-subtitle">Psicóloga Clínica | CRP 06/226283</p>
                         <p class="profile-subtitle">Abordagem Sistêmica<br>Acompanhamento Piscológico e Terapêutico</p>
@@ -71,9 +107,6 @@ const app = {
                     <p class="text-slate-600">Acesso ao portal de Agendamentos</p>
                 </div>-->
                 <form id="auth-form" class="space-y-5">
-
-                    
-
                     <div>
                         <label class="block text-sm font-medium text-slate-700 mb-1">E-mail</label>
                         <input type="email" id="email" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none transition-all" placeholder="seu.nome@email.com">
@@ -119,13 +152,16 @@ const app = {
                         <input type="password" id="reg-password" required minlength="6" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none" placeholder="Mínimo 6 caracteres">
                     </div>
                     
-                    <div class="flex items-start mt-2">
-                        <div class="flex items-center h-5">
-                            <input id="reg-terms" type="checkbox" required class="w-4 h-4 text-teal-600 bg-white border-slate-300 rounded focus:ring-teal-500 focus:ring-2 cursor-pointer">
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 mt-2">
+                        <div class="flex items-start">
+                            <div class="flex items-center h-5 mt-0.5">
+                                <input id="reg-terms" type="checkbox" required class="w-4 h-4 text-teal-600 bg-white border-slate-300 rounded focus:ring-teal-500 focus:ring-2 cursor-pointer">
+                            </div>
+                            <label for="reg-terms" class="ml-2 text-xs text-slate-600 cursor-pointer leading-relaxed">
+                                Eu li e aceito o <button type="button" onclick="app.openTermsModal(event)" class="text-sky-600 hover:underline font-bold">Termo de Consentimento Livre e Esclarecido (TCLE)</button> e a Política de Privacidade.
+                            </label>
                         </div>
-                        <label for="reg-terms" class="ml-2 text-sm text-slate-600 cursor-pointer leading-tight">
-                            Eu li e aceito o <a href="#" class="text-sky-600 hover:underline font-semibold">Termo de Consentimento Livre e Esclarecido (TCLE)</a> e a Política de Privacidade.
-                        </label>
+                        <p class="text-[11px] text-slate-400 mt-1.5 pl-6">Legenda: Clique no link azul acima para ler o documento completo na tela.</p>
                     </div>
 
                     <div id="auth-error" class="text-red-500 text-sm hidden font-medium text-center bg-red-50 p-2 rounded"></div>
@@ -214,7 +250,7 @@ const app = {
 
                     if (phone.replace(/\D/g, '').length < 10) throw new Error("Por favor, insira um número de celular válido.");
 
-                    // Dispara a criação da conta na nuvem (o gatilho SQL cuidará de criar o perfil)
+                    // Dispara a criação da conta na nuvem registrando a data/hora do aceite do TCLE
                     const { data, error } = await window.supabaseClient.auth.signUp({
                         email: email,
                         password: password,
@@ -222,14 +258,12 @@ const app = {
                             data: {
                                 name: name,
                                 phone: phone,
-                                role: ROLES.PATIENT // Envia a role via metadados seguros
+                                role: ROLES.PATIENT,
+                                tcle_accepted_at: new Date().toISOString()
                             }
                         }
                     });
 
-                    // O Supabase tem uma proteção inteligente: se o e-mail já existir, 
-                    // por motivos de segurança ele não retorna erro explícito de "já existe" na configuração padrão, 
-                    // mas retorna um data.user vazio dependendo da configuração.
                     if (error) throw new Error(error.message);
 
                     this.showNotification("Conta Criada!", "Seu cadastro foi realizado com sucesso. Faça login para continuar.", false);
@@ -241,7 +275,7 @@ const app = {
                     const recEmail = document.getElementById('rec-email').value;
 
                     const { data, error } = await window.supabaseClient.auth.resetPasswordForEmail(recEmail, {
-                        redirectTo: window.location.origin + '/index.html', // Redireciona de volta para o site após clicar no e-mail
+                        redirectTo: window.location.origin + '/index.html',
                     });
 
                     if (error) throw new Error(error.message);
@@ -251,7 +285,6 @@ const app = {
                 }
 
             } catch (error) {
-                // Traduz o erro em inglês do Supabase para português caso ocorra falha de credenciais
                 if (error.message.includes('Invalid login credentials')) {
                     errorDiv.textContent = "E-mail ou senha incorretos.";
                 } else if (error.message.includes('User already registered')) {
