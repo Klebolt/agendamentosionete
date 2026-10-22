@@ -1,10 +1,17 @@
 /**
  * MÓDULO DO PACIENTE (Funcionário)
- * * Versão 4.0: 100% Integrado ao Supabase (Sem LocalStorage para dados sensíveis).
+ * * Versão 4.2: 100% Integrado ao Supabase + Reagendamento em 1 Clique, Filtros Rápidos, Google Calendar/ICS e Trava de Horários Passados.
  */
 
 const patientApp = {
     notificationInterval: null,
+    reschedulingAppId: null,
+    reschedulingOldDate: null,
+    calendarPeriodFilter: 'all', // 'all' | 'this_week' | 'next_week'
+    calendarShiftFilter: 'all',  // 'all' | 'morning' | 'afternoon'
+    cachedSettings: null,
+    cachedAllAppointments: [],
+    cachedPatientAppointments: [],
 
     async renderDashboard() {
         const user = authService.getCurrentUser();
@@ -35,12 +42,12 @@ const patientApp = {
                 customSchedule: null
             };
 
-            const cachedSettings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS));
-            if (cachedSettings) {
-                settings = { ...settings, ...cachedSettings };
+            const localSaved = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS));
+            if (localSaved) {
+                settings = { ...settings, ...localSaved };
             }
 
-            // 2. Busca a configuração real na nuvem (Supabase) para refletir na hora o que o Admin salvou
+            // 2. Busca a configuração real na nuvem (Supabase)
             try {
                 const supabaseConn = window.supabaseClient || window.supabase || CONFIG.supabaseClient;
                 if (supabaseConn) {
@@ -58,6 +65,10 @@ const patientApp = {
             } catch (err) {
                 console.warn("Aviso: Usando configurações em cache local.", err);
             }
+
+            this.cachedSettings = settings;
+            this.cachedAllAppointments = allAppointments;
+            this.cachedPatientAppointments = patientAppointments;
 
             const now = new Date();
 
@@ -83,23 +94,55 @@ const patientApp = {
                         </button>
                     </div>
 
-                    ${this.buildNextSessionCard(upcoming[0])}
+                    ${this.buildNextSessionCard(upcoming[0], settings)}
 
                     ${this.buildFutureSessionsList(upcoming)}
 
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div id="calendar-section-anchor" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                            <h2 class="text-xl font-semibold text-slate-800 mb-6 flex items-center">
-                                <svg class="w-5 h-5 mr-2 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                                Agenda de Consultas
-                            </h2>
-                            <div class="max-h-[600px] overflow-y-auto pr-2 space-y-8">
+                            <div class="mb-4">
+                                <h2 class="text-xl font-semibold text-slate-800 flex items-center">
+                                    <svg class="w-5 h-5 mr-2 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                    Agenda de Consultas
+                                </h2>
+                                <p class="text-xs text-slate-500 mt-1">
+                                    Legenda: Utilize os filtros rápidos abaixo para navegar pelas semanas ou turnos e clique sobre um horário livre para confirmar.
+                                </p>
+                            </div>
+
+                            <!-- BANNER DE MODO REAGENDAMENTO (1 CLIQUE) -->
+                            <div id="reschedule-banner-container">
+                                ${this.buildRescheduleBanner()}
+                            </div>
+
+                            <!-- FILTROS RÁPIDOS DE PERÍODO E TURNO -->
+                            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 mb-6 space-y-3">
+                                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Período:</span>
+                                    <div class="flex flex-wrap gap-1.5">
+                                        <button onclick="patientApp.setCalendarFilter('period', 'all')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${this.calendarPeriodFilter === 'all' ? 'bg-teal-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}">Todos os Dias</button>
+                                        <button onclick="patientApp.setCalendarFilter('period', 'this_week')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${this.calendarPeriodFilter === 'this_week' ? 'bg-teal-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}">Esta Semana</button>
+                                        <button onclick="patientApp.setCalendarFilter('period', 'next_week')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${this.calendarPeriodFilter === 'next_week' ? 'bg-teal-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}">Próxima Semana</button>
+                                    </div>
+                                </div>
+                                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-200/60">
+                                    <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Turno do Dia:</span>
+                                    <div class="flex flex-wrap gap-1.5">
+                                        <button onclick="patientApp.setCalendarFilter('shift', 'all')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${this.calendarShiftFilter === 'all' ? 'bg-sky-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}">Todos os Horários</button>
+                                        <button onclick="patientApp.setCalendarFilter('shift', 'morning')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${this.calendarShiftFilter === 'morning' ? 'bg-sky-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}">Manhã (até 12h)</button>
+                                        <button onclick="patientApp.setCalendarFilter('shift', 'afternoon')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${this.calendarShiftFilter === 'afternoon' ? 'bg-sky-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}">Tarde / Noite (após 12h)</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="dynamic-calendar-slots" class="max-h-[600px] overflow-y-auto pr-2 space-y-8">
                                 ${this.buildDynamicCalendar(settings, allAppointments, patientAppointments)}
                             </div>
                         </div>
 
                         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                            <h2 class="text-xl font-semibold text-slate-800 mb-4">Histórico</h2>
+                            <h2 class="text-xl font-semibold text-slate-800 mb-1">Histórico</h2>
+                            <p class="text-xs text-slate-500 mb-4">Legenda: Registro de todas as suas sessões concluídas ou canceladas.</p>
                             <div class="space-y-3 max-h-[400px] overflow-y-auto">
                                 ${this.buildHistoryList(past)}
                             </div>
@@ -109,8 +152,6 @@ const patientApp = {
             `;
 
             this.startNotificationMonitor(upcoming[0]);
-
-            // Passamos a lista de agendamentos para a função validar a regra no Supabase
             this.attachBookingListeners(user.id, patientAppointments);
 
         } catch (error) {
@@ -118,7 +159,92 @@ const patientApp = {
         }
     },
 
-    buildNextSessionCard(nextApp) {
+    buildRescheduleBanner() {
+        if (!this.reschedulingAppId) return '';
+        const oldDate = new Date(this.reschedulingOldDate);
+        const fmt = `${oldDate.toLocaleDateString('pt-BR')} às ${oldDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+        return `
+            <div class="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 mb-5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm animate-fade-in">
+                <div class="text-center sm:text-left">
+                    <span class="inline-block px-2.5 py-0.5 bg-amber-200 text-amber-900 text-[10px] font-black rounded-full uppercase tracking-wider mb-1">Modo de Reagendamento Ativo</span>
+                    <p class="text-xs text-amber-950 font-semibold">Você está trocando a sessão do dia <strong>${fmt}</strong>.</p>
+                    <p class="text-[11px] text-amber-800 mt-0.5">Legenda: Clique em qualquer novo horário livre abaixo para transferir sua consulta automaticamente.</p>
+                </div>
+                <button onclick="patientApp.cancelRescheduleMode()" class="px-4 py-2 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold shrink-0 transition-colors">
+                    Manter Horário Atual
+                </button>
+            </div>
+        `;
+    },
+
+    startRescheduleMode(appId, appDateStr) {
+        const now = new Date();
+        const appointmentTime = new Date(appDateStr);
+        const hoursDifference = (appointmentTime - now) / (1000 * 60 * 60);
+
+        if (hoursDifference < 24) {
+            this.cancelAppointment(appId, appDateStr);
+            return;
+        }
+
+        this.reschedulingAppId = appId;
+        this.reschedulingOldDate = appDateStr;
+        this.renderDashboard().then(() => {
+            const el = document.getElementById('calendar-section-anchor');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+        });
+    },
+
+    cancelRescheduleMode() {
+        this.reschedulingAppId = null;
+        this.reschedulingOldDate = null;
+        this.renderDashboard();
+    },
+
+    setCalendarFilter(type, value) {
+        if (type === 'period') this.calendarPeriodFilter = value;
+        if (type === 'shift') this.calendarShiftFilter = value;
+        this.renderDashboard();
+    },
+
+    getGoogleCalendarUrl(dateStr, durationMins, meetUrl) {
+        const start = new Date(dateStr);
+        const end = new Date(start.getTime() + (Number(durationMins) || 50) * 60000);
+        const fmt = (d) => d.toISOString().replace(/-|:|\.\d+/g, '');
+        const title = encodeURIComponent('Sessão de Psicologia - Psi. Ionete');
+        const details = encodeURIComponent(`Atendimento psicológico online.\nLink da Sala Virtual: ${meetUrl}`);
+        const location = encodeURIComponent(meetUrl);
+        return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${fmt(start)}/${fmt(end)}&details=${details}&location=${location}`;
+    },
+
+    downloadICS(dateStr, durationMins, meetUrl) {
+        const start = new Date(dateStr);
+        const end = new Date(start.getTime() + (Number(durationMins) || 50) * 60000);
+        const fmt = (d) => d.toISOString().replace(/-|:|\.\d+/g, '');
+        const icsContent = [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'PRODID:-//Psi.Ionete//Sensus//PT',
+            'BEGIN:VEVENT',
+            `DTSTART:${fmt(start)}`,
+            `DTEND:${fmt(end)}`,
+            'SUMMARY:Sessão de Psicologia - Psi. Ionete',
+            `DESCRIPTION:Atendimento psicológico online. Sala Virtual: ${meetUrl}`,
+            `LOCATION:${meetUrl}`,
+            'END:VEVENT',
+            'END:VCALENDAR'
+        ].join('\r\n');
+
+        const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'consulta-psi-ionete.ics';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    },
+
+    buildNextSessionCard(nextApp, settingsObj) {
         if (!nextApp) {
             return `
                 <div class="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center shadow-sm">
@@ -132,29 +258,53 @@ const patientApp = {
         const formattedDate = appDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
         const formattedTime = appDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-        // CIRURGIA: Lê o link dinâmico salvo pela Dra. Ionete no painel de Configuração
-        const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {};
+        const settings = settingsObj || JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {};
         const dynamicMeetUrl = settings.meetUrl || settings.meetingLink || settings.meetLink || CONFIG.MEET_URL;
+        const duration = settings.sessionDuration || 50;
+        const gcalUrl = this.getGoogleCalendarUrl(nextApp.date, duration, dynamicMeetUrl);
 
         return `
-            <div class="bg-teal-50 border border-teal-100 rounded-2xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div class="text-center sm:text-left">
-                    <span class="inline-block px-3 py-1 bg-teal-100 text-teal-800 text-xs font-bold rounded-full mb-3 uppercase tracking-wider">Próxima Consulta</span>
-                    <h3 class="text-2xl font-bold text-teal-950 capitalize">${formattedDate}</h3>
-                    <p class="text-teal-700 text-lg mt-1 flex items-center justify-center sm:justify-start font-medium">
-                        <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        ${formattedTime}
-                    </p>
+            <div class="bg-teal-50 border border-teal-100 rounded-2xl p-6 sm:p-8 shadow-sm space-y-5">
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="text-center sm:text-left">
+                        <span class="inline-block px-3 py-1 bg-teal-100 text-teal-800 text-xs font-bold rounded-full mb-3 uppercase tracking-wider">Próxima Consulta</span>
+                        <h3 class="text-2xl font-bold text-teal-950 capitalize">${formattedDate}</h3>
+                        <p class="text-teal-700 text-lg mt-1 flex items-center justify-center sm:justify-start font-medium">
+                            <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            ${formattedTime}
+                        </p>
+                    </div>
+                    <div class="flex flex-col sm:flex-row flex-wrap gap-2.5 w-full sm:w-auto justify-end">
+                        <button onclick="patientApp.startRescheduleMode('${nextApp.id}', '${nextApp.date}')" class="flex-1 sm:flex-none justify-center px-4 py-3 text-xs font-bold text-sky-700 bg-white border border-sky-200 hover:bg-sky-50 rounded-xl transition-all flex items-center">
+                            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                            Trocar Horário
+                        </button>
+                        <button onclick="patientApp.cancelAppointment('${nextApp.id}', '${nextApp.date}')" class="flex-1 sm:flex-none justify-center px-4 py-3 text-xs font-bold text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-xl transition-all">
+                            Cancelar Consulta
+                        </button>
+                        <a href="${dynamicMeetUrl}" target="_blank" rel="noopener noreferrer" 
+                           class="w-full sm:w-auto inline-flex items-center justify-center px-7 py-3.5 text-base font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                            Entrar na Sala Virtual
+                        </a>
+                    </div>
                 </div>
-                <div class="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                    <button onclick="patientApp.cancelAppointment('${nextApp.id}', '${nextApp.date}')" class="flex-1 sm:flex-none justify-center px-6 py-4 text-sm font-bold text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-xl transition-all">
-                        Cancelar Consulta
-                    </button>
-                    <a href="${dynamicMeetUrl}" target="_blank" rel="noopener noreferrer" 
-                       class="flex-1 sm:flex-none inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5">
-                        <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                        Entrar na Sala Virtual
-                    </a>
+
+                <!-- BARRA DE LEMBRETE NO CALENDÁRIO PESSOAL COM LEGENDA -->
+                <div class="pt-4 border-t border-teal-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <p class="text-xs text-teal-800 text-center sm:text-left">
+                        <strong>Legenda:</strong> Salve esta consulta na agenda do seu celular ou computador para receber um alerta automático antes da sessão:
+                    </p>
+                    <div class="flex flex-wrap justify-center sm:justify-end gap-2 shrink-0">
+                        <a href="${gcalUrl}" target="_blank" rel="noopener noreferrer" class="px-3.5 py-2 bg-white hover:bg-teal-100/50 text-teal-900 border border-teal-200 rounded-lg text-xs font-bold inline-flex items-center shadow-sm transition-colors">
+                            <svg class="w-4 h-4 mr-1.5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            Adicionar ao Google Agenda
+                        </a>
+                        <button onclick="patientApp.downloadICS('${nextApp.date}', ${duration}, '${dynamicMeetUrl}')" class="px-3.5 py-2 bg-white hover:bg-teal-100/50 text-teal-900 border border-teal-200 rounded-lg text-xs font-bold inline-flex items-center shadow-sm transition-colors">
+                            <svg class="w-4 h-4 mr-1.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            Agenda iPhone / Outlook (.ics)
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -166,30 +316,36 @@ const patientApp = {
         const futureList = upcoming.slice(1).map(app => {
             const date = new Date(app.date);
             return `
-                <div class="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-sky-300 transition-colors">
+                <div class="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-sky-300 transition-colors gap-2">
                     <div class="flex items-center">
-                        <div class="w-12 h-12 rounded-lg bg-sky-50 text-sky-600 flex flex-col justify-center items-center mr-4 font-bold border border-sky-100">
+                        <div class="w-12 h-12 rounded-lg bg-sky-50 text-sky-600 flex flex-col justify-center items-center mr-3 font-bold border border-sky-100 shrink-0">
                             <span class="text-[10px] uppercase leading-none mb-0.5">${date.toLocaleDateString('pt-BR', { month: 'short' })}</span>
                             <span class="text-lg leading-none">${date.getDate()}</span>
                         </div>
                         <div>
-                            <p class="text-sm font-bold text-slate-800">${date.toLocaleDateString('pt-BR', { weekday: 'long' })}</p>
+                            <p class="text-sm font-bold text-slate-800 capitalize">${date.toLocaleDateString('pt-BR', { weekday: 'long' })}</p>
                             <p class="text-xs font-medium text-slate-500 mt-0.5">Às ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                         </div>
                     </div>
-                    <button onclick="patientApp.cancelAppointment('${app.id}', '${app.date}')" class="text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700 px-3 py-2 rounded-lg transition-colors">
-                        Cancelar
-                    </button>
+                    <div class="flex flex-col sm:flex-row gap-1.5 shrink-0">
+                        <button onclick="patientApp.startRescheduleMode('${app.id}', '${app.date}')" title="Trocar horário desta consulta" class="text-xs font-bold text-sky-600 bg-sky-50 hover:bg-sky-100 px-2.5 py-2 rounded-lg transition-colors">
+                            Trocar
+                        </button>
+                        <button onclick="patientApp.cancelAppointment('${app.id}', '${app.date}')" class="text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700 px-2.5 py-2 rounded-lg transition-colors">
+                            Cancelar
+                        </button>
+                    </div>
                 </div>
             `;
         }).join('');
 
         return `
             <div class="bg-slate-50/50 border border-slate-200 rounded-2xl p-6 shadow-inner">
-                <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center">
+                <h3 class="text-lg font-bold text-slate-800 mb-1 flex items-center">
                     <svg class="w-5 h-5 mr-2 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                     Seus Outros Agendamentos Futuros
                 </h3>
+                <p class="text-xs text-slate-500 mb-4">Legenda: Você pode trocar o horário ou cancelar qualquer sessão futura com até 24h de antecedência.</p>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     ${futureList}
                 </div>
@@ -205,19 +361,18 @@ const patientApp = {
 
         if (hoursDifference < 24) {
             app.showNotification(
-                "Cancelamento Bloqueado",
+                "Alteração Bloqueada",
                 "Faltam menos de 24h para a consulta.",
                 true
             );
 
-            // Adiciona modal para contato via WhatsApp buscando o admin no Supabase
             const { data: admins } = await window.supabaseClient.from('profiles').select('phone').eq('role', ROLES.PSYCHOLOGIST).limit(1);
             const adminPhone = (admins && admins[0]) ? admins[0].phone : '';
             const cleanPhone = adminPhone ? adminPhone.replace(/\D/g, '') : '';
 
             const dateFmt = appointmentTime.toLocaleDateString('pt-BR');
             const timeFmt = appointmentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-            const msg = encodeURIComponent(`Olá! Gostaria de falar sobre o cancelamento da minha sessão agendada para ${dateFmt} às ${timeFmt}.`);
+            const msg = encodeURIComponent(`Olá! Gostaria de falar sobre a minha sessão agendada para ${dateFmt} às ${timeFmt}.`);
             const waLink = cleanPhone ? `https://wa.me/55${cleanPhone}?text=${msg}` : `https://wa.me/?text=${msg}`;
 
             const modal = document.createElement('div');
@@ -229,7 +384,7 @@ const patientApp = {
                         <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     </div>
                     <h3 class="text-xl font-bold text-slate-900 mb-2">Aviso Importante</h3>
-                    <p class="text-sm text-slate-600 mb-6">Como faltam menos de 24 horas para a consulta, o cancelamento automático não é permitido. Por favor, avise a profissional diretamente.</p>
+                    <p class="text-sm text-slate-600 mb-6">Como faltam menos de 24 horas para a consulta, o cancelamento ou reagendamento automático não é permitido. Por favor, avise a profissional diretamente.</p>
                     <div class="flex flex-col space-y-3">
                         <a href="${waLink}" target="_blank" onclick="document.getElementById('wa-alert-modal').remove()" class="w-full bg-green-500 text-white font-bold py-3 rounded-xl hover:bg-green-600 transition-colors flex justify-center items-center">
                             <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M12.031 21.488l-3.351.879.882-3.267A9.953 9.953 0 012.046 12c0-5.514 4.486-10 10-10s10 4.486 10 10-4.486 10-10 10a9.952 9.952 0 01-5.015-1.512zM12.046 4c-4.411 0-8 3.589-8 8a7.962 7.962 0 004.148 6.98l.583.336-.58 2.148 2.2-2.148.583.336A7.96 7.96 0 0012.046 20c4.411 0 8-3.589 8-8s-3.589-8-8-8zm4.12 10.963c-.226-.113-1.336-.659-1.543-.734-.207-.075-.358-.113-.509.113-.15.226-.583.734-.715.885-.132.15-.264.17-.49.057-1.127-.565-2.004-1.28-2.674-2.423-.132-.226.132-.207.348-.639.075-.15.038-.283-.019-.396-.057-.113-.509-1.226-.697-1.678-.184-.442-.369-.382-.509-.387-.132-.005-.283-.005-.433-.005-.15 0-.396.057-.603.283-.207.226-.791.772-.791 1.884s.81 2.185.923 2.336c.113.15 1.59 2.423 3.847 3.396 1.157.498 1.642.545 2.188.452.546-.093 1.336-.545 1.524-1.073.188-.528.188-.98.132-1.073-.057-.094-.208-.15-.434-.264z"/></svg>
@@ -260,15 +415,32 @@ const patientApp = {
     buildDynamicCalendar(settings, allAppointments, patientAppointments) {
         let html = '';
 
-        const startDate = new Date(settings.availabilityStartDate + 'T00:00:00');
+        const now = new Date();
+        const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        let startDate = new Date(settings.availabilityStartDate + 'T00:00:00');
+        if (startDate < todayMidnight) startDate = new Date(todayMidnight);
         const endDate = new Date(settings.availabilityEndDate + 'T23:59:59');
         const holidays = settings.holidays || [];
 
+        // Cálculo de janelas para o filtro "Esta Semana" e "Próxima Semana"
+        const currentDayOfWeek = todayMidnight.getDay();
+        const endOfThisWeek = new Date(todayMidnight);
+        endOfThisWeek.setDate(todayMidnight.getDate() + (6 - currentDayOfWeek));
+        endOfThisWeek.setHours(23, 59, 59, 999);
+
+        const startOfNextWeek = new Date(endOfThisWeek);
+        startOfNextWeek.setDate(endOfThisWeek.getDate() + 1);
+        startOfNextWeek.setHours(0, 0, 0, 0);
+
+        const endOfNextWeek = new Date(startOfNextWeek);
+        endOfNextWeek.setDate(startOfNextWeek.getDate() + 6);
+        endOfNextWeek.setHours(23, 59, 59, 999);
+
+        // Ignora o dia da própria consulta que está sendo reagendada para permitir escolher outro horário no mesmo dia
         const patientBookedDates = patientAppointments
-            .filter(a => !a.status || a.status === 'SCHEDULED')
-            .map(a => {
-                return a.date ? a.date.split('T')[0] : '';
-            });
+            .filter(a => (!a.status || a.status === 'SCHEDULED') && a.id !== this.reschedulingAppId)
+            .map(a => a.date ? a.date.split('T')[0] : '');
 
         const timeToMins = (s) => {
             if (!s || typeof s !== 'string') return 0;
@@ -283,117 +455,146 @@ const patientApp = {
         let cursor = new Date(startDate);
 
         while (cursor <= endDate) {
-            // Extração de data local à prova de fuso horário (UTC-3)
-            const y = cursor.getFullYear();
-            const m = String(cursor.getMonth() + 1).padStart(2, '0');
-            const d = String(cursor.getDate()).padStart(2, '0');
-            const dateStr = `${y}-${m}-${d}`;
+            // Aplica Filtro de Período (Esta Semana / Próxima Semana)
+            const cursorTime = cursor.getTime();
+            const isPeriodAllowed =
+                this.calendarPeriodFilter === 'all' ||
+                (this.calendarPeriodFilter === 'this_week' && cursorTime >= todayMidnight.getTime() && cursorTime <= endOfThisWeek.getTime()) ||
+                (this.calendarPeriodFilter === 'next_week' && cursorTime >= startOfNextWeek.getTime() && cursorTime <= endOfNextWeek.getTime());
 
-            const dayOfWeek = cursor.getDay(); // 0 = Dom, 1 = Seg ... 6 = Sáb
-            const isHoliday = holidays.includes(dateStr);
-            const hasBookingThisDay = patientBookedDates.includes(dateStr);
+            if (isPeriodAllowed) {
+                const y = cursor.getFullYear();
+                const m = String(cursor.getMonth() + 1).padStart(2, '0');
+                const d = String(cursor.getDate()).padStart(2, '0');
+                const dateStr = `${y}-${m}-${d}`;
 
-            // Verifica a configuração específica daquele dia da semana (customSchedule)
-            let isWorkDay = false;
-            let dayStartStr = settings.startTime || '09:00';
-            let dayEndStr = settings.endTime || '17:00';
-            let hasLunch = true;
-            let dayLunchStartStr = settings.lunchStart || '12:00';
-            let dayLunchEndStr = settings.lunchEnd || '13:00';
+                const dayOfWeek = cursor.getDay();
+                const isHoliday = holidays.includes(dateStr);
+                const hasBookingThisDay = patientBookedDates.includes(dateStr);
 
-            if (settings.customSchedule && settings.customSchedule[dayOfWeek]) {
-                const dayCfg = settings.customSchedule[dayOfWeek];
-                isWorkDay = Boolean(dayCfg.active);
-                dayStartStr = dayCfg.start || '09:00';
-                dayEndStr = dayCfg.end || '17:00';
-                hasLunch = Boolean(dayCfg.hasLunch);
-                dayLunchStartStr = dayCfg.lunchStart || '12:00';
-                dayLunchEndStr = dayCfg.lunchEnd || '13:00';
-            } else {
-                // Fallback caso ainda não tenha salvo com a estrutura nova
-                isWorkDay = Array.isArray(settings.workDays) && settings.workDays.includes(dayOfWeek);
-                if (dayOfWeek === 6) {
-                    dayStartStr = settings.saturdayStartTime || '08:00';
-                    dayEndStr = settings.saturdayEndTime || '13:00';
-                    hasLunch = false;
-                }
-            }
+                let isWorkDay = false;
+                let dayStartStr = settings.startTime || '09:00';
+                let dayEndStr = settings.endTime || '17:00';
+                let hasLunch = true;
+                let dayLunchStartStr = settings.lunchStart || '12:00';
+                let dayLunchEndStr = settings.lunchEnd || '13:00';
 
-            if (isWorkDay) {
-                const startMin = timeToMins(dayStartStr);
-                const endMin = timeToMins(dayEndStr);
-                const lunchStartMin = timeToMins(dayLunchStartStr);
-                const lunchEndMin = timeToMins(dayLunchEndStr);
-
-                const displayDate = cursor.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }).toUpperCase();
-
-                html += `
-                    <div>
-                        <div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-4">
-                            <h4 class="text-xs font-bold text-slate-400 tracking-widest">${displayDate}</h4>
-                            ${isHoliday ? '<span class="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">FERIADO / BLOQUEADO</span>' : ''}
-                        </div>
-                `;
-
-                if (hasBookingThisDay) {
-                    html += `
-                        <div class="bg-sky-50 border border-sky-100 rounded-xl p-4 text-center">
-                            <p class="text-xs font-bold text-sky-700">Você já possui uma sessão agendada para este dia.</p>
-                        </div>
-                    </div>
-                    `;
+                if (settings.customSchedule && settings.customSchedule[dayOfWeek]) {
+                    const dayCfg = settings.customSchedule[dayOfWeek];
+                    isWorkDay = Boolean(dayCfg.active);
+                    dayStartStr = dayCfg.start || '09:00';
+                    dayEndStr = dayCfg.end || '17:00';
+                    hasLunch = Boolean(dayCfg.hasLunch);
+                    dayLunchStartStr = dayCfg.lunchStart || '12:00';
+                    dayLunchEndStr = dayCfg.lunchEnd || '13:00';
                 } else {
-                    html += `<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">`;
-
-                    let currentMin = startMin;
-                    while (currentMin + sessionDuration <= endMin) {
-                        // Aplica a pausa de almoço apenas se estiver ativa naquele dia da semana
-                        if (hasLunch && currentMin >= lunchStartMin && currentMin < lunchEndMin) {
-                            currentMin = lunchEndMin;
-                            continue;
-                        }
-
-                        const h = Math.floor(currentMin / 60).toString().padStart(2, '0');
-                        const min = (currentMin % 60).toString().padStart(2, '0');
-                        const timeStr = `${h}:${min}`;
-                        const fullDateTime = `${dateStr}T${timeStr}:00`;
-                        
-                        // Transformação em Timestamp para evitar bug de fuso horário
-                        const btnTimestamp = new Date(fullDateTime).getTime();
-
-                        const isBooked = allAppointments.some(a => {
-                            if (!a || !a.date) return false;
-                            
-                            const dbTimestamp = new Date(a.date).getTime();
-                            const isSameSlot = (dbTimestamp === btnTimestamp) || a.date.includes(`${dateStr}T${timeStr}`);
-                            
-                            return isSameSlot && (!a.status || a.status === 'SCHEDULED');
-                        });
-
-                        if (isHoliday || isBooked) {
-                            const label = isHoliday ? 'FERIADO' : 'OCUPADO';
-                            html += `
-                                <button disabled 
-                                    class="py-2 text-xs font-bold text-red-500 bg-red-50 border border-red-200 rounded-lg cursor-not-allowed opacity-60">
-                                    ${label}
-                                </button>
-                            `;
-                        } else {
-                            html += `
-                                <button data-date="${fullDateTime}" 
-                                    class="btn-book py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-teal-500 hover:text-teal-600 transition-all">
-                                    ${timeStr}
-                                </button>
-                            `;
-                        }
-                        currentMin += step;
+                    isWorkDay = Array.isArray(settings.workDays) && settings.workDays.includes(dayOfWeek);
+                    if (dayOfWeek === 6) {
+                        dayStartStr = settings.saturdayStartTime || '08:00';
+                        dayEndStr = settings.saturdayEndTime || '13:00';
+                        hasLunch = false;
                     }
-                    html += `</div></div>`;
+                }
+
+                if (isWorkDay) {
+                    const startMin = timeToMins(dayStartStr);
+                    const endMin = timeToMins(dayEndStr);
+                    const lunchStartMin = timeToMins(dayLunchStartStr);
+                    const lunchEndMin = timeToMins(dayLunchEndStr);
+
+                    const displayDate = cursor.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }).toUpperCase();
+
+                    if (hasBookingThisDay) {
+                        html += `
+                            <div>
+                                <div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-4">
+                                    <h4 class="text-xs font-bold text-slate-400 tracking-widest">${displayDate}</h4>
+                                </div>
+                                <div class="bg-sky-50 border border-sky-100 rounded-xl p-4 text-center">
+                                    <p class="text-xs font-bold text-sky-700">Você já possui uma sessão agendada para este dia.</p>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        let slotsHtml = '';
+                        let currentMin = startMin;
+
+                        while (currentMin + sessionDuration <= endMin) {
+                            if (hasLunch && currentMin >= lunchStartMin && currentMin < lunchEndMin) {
+                                currentMin = lunchEndMin;
+                                continue;
+                            }
+
+                            // Aplica Filtro de Turno (Manhã < 720 min / Tarde >= 720 min)
+                            const isShiftAllowed =
+                                this.calendarShiftFilter === 'all' ||
+                                (this.calendarShiftFilter === 'morning' && currentMin < 720) ||
+                                (this.calendarShiftFilter === 'afternoon' && currentMin >= 720);
+
+                            if (isShiftAllowed) {
+                                const h = Math.floor(currentMin / 60).toString().padStart(2, '0');
+                                const min = (currentMin % 60).toString().padStart(2, '0');
+                                const timeStr = `${h}:${min}`;
+                                const fullDateTime = `${dateStr}T${timeStr}:00`;
+
+                                const slotDateObj = new Date(fullDateTime);
+                                const btnTimestamp = slotDateObj.getTime();
+
+                                // TRAVA DE HORÁRIOS PASSADOS NO DIA ATUAL
+                                const isPastSlot = btnTimestamp <= now.getTime();
+
+                                const isBooked = allAppointments.some(a => {
+                                    if (!a || !a.date || a.id === this.reschedulingAppId) return false;
+                                    const dbTimestamp = new Date(a.date).getTime();
+                                    const isSameSlot = (dbTimestamp === btnTimestamp) || a.date.includes(`${dateStr}T${timeStr}`);
+                                    return isSameSlot && (!a.status || a.status === 'SCHEDULED');
+                                });
+
+                                if (isHoliday || isBooked || isPastSlot) {
+                                    const label = isHoliday ? 'FERIADO' : (isBooked ? 'OCUPADO' : 'ENCERRADO');
+                                    const disabledStyle = isPastSlot
+                                        ? 'text-slate-400 bg-slate-100 border-slate-200'
+                                        : 'text-red-500 bg-red-50 border-red-200';
+                                    slotsHtml += `
+                                        <button disabled 
+                                            class="py-2 text-xs font-bold ${disabledStyle} border rounded-lg cursor-not-allowed opacity-60">
+                                            ${label}
+                                        </button>
+                                    `;
+                                } else {
+                                    const activeBtnStyle = this.reschedulingAppId
+                                        ? 'text-amber-900 bg-amber-50/60 border-amber-300 hover:border-amber-500 hover:bg-amber-100'
+                                        : 'text-slate-600 bg-white border-slate-200 hover:border-teal-500 hover:text-teal-600';
+                                    slotsHtml += `
+                                        <button data-date="${fullDateTime}" 
+                                            class="btn-book py-2 text-xs font-semibold border rounded-lg transition-all ${activeBtnStyle}">
+                                            ${timeStr}
+                                        </button>
+                                    `;
+                                }
+                            }
+                            currentMin += step;
+                        }
+
+                        if (slotsHtml !== '') {
+                            html += `
+                                <div>
+                                    <div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-4">
+                                        <h4 class="text-xs font-bold text-slate-400 tracking-widest">${displayDate}</h4>
+                                        ${isHoliday ? '<span class="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">FERIADO / BLOQUEADO</span>' : ''}
+                                    </div>
+                                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                        ${slotsHtml}
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    }
                 }
             }
             cursor.setDate(cursor.getDate() + 1);
         }
-        return html || '<p class="text-center text-slate-400">Nenhum horário disponível no período selecionado.</p>';
+        return html || '<p class="text-center text-slate-400 py-8">Nenhum horário disponível para o filtro ou período selecionado.</p>';
     },
 
     buildHistoryList(past) {
@@ -429,6 +630,28 @@ const patientApp = {
             btn.addEventListener('click', async (e) => {
                 const dateStr = e.target.getAttribute('data-date');
                 const dayStr = dateStr.split('T')[0];
+
+                // Se estiver no Modo de Reagendamento em 1 Clique
+                if (this.reschedulingAppId) {
+                    const fmtNew = `${dayStr.split('-').reverse().join('/')} às ${dateStr.split('T')[1].substring(0, 5)}`;
+                    if (!confirm(`Deseja transferir sua consulta para ${fmtNew}?`)) return;
+
+                    e.target.disabled = true;
+                    e.target.innerText = '...';
+
+                    try {
+                        await dbService.rescheduleAppointment(this.reschedulingAppId, dateStr);
+                        this.reschedulingAppId = null;
+                        this.reschedulingOldDate = null;
+                        app.showNotification("Horário Atualizado!", "Sua consulta foi reagendada com sucesso.", false);
+                        setTimeout(() => this.renderDashboard(), 500);
+                    } catch (error) {
+                        app.showNotification("Erro", error.message, true);
+                        e.target.disabled = false;
+                        e.target.innerText = dateStr.split('T')[1].substring(0, 5);
+                    }
+                    return;
+                }
 
                 const hasBookingToday = patientAppointments.some(a => a.date.startsWith(dayStr) && (!a.status || a.status === 'SCHEDULED'));
 
@@ -476,7 +699,10 @@ const patientApp = {
         modal.innerHTML = `
             <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6">
                 <div class="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                    <h3 class="text-xl font-bold text-slate-900">Minha Conta</h3>
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-900">Minha Conta</h3>
+                        <p class="text-xs text-slate-500 mt-0.5">Legenda: Mantenha seu WhatsApp atualizado para avisos importantes.</p>
+                    </div>
                     <button onclick="document.getElementById('profile-modal').remove()" class="text-slate-400 hover:text-slate-600 text-3xl leading-none">&times;</button>
                 </div>
                 
