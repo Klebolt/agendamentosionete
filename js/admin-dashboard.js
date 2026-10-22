@@ -1,11 +1,11 @@
 /**
  * MÓDULO DO PSICÓLOGO (Administrador)
- * * Atualizado com: Relatórios Gerenciais Avançados, Exportação para PDF e Soft Delete (Status de Cancelamento).
+ * * Atualizado com: Relatórios Gerenciais Avançados, Exportação para PDF, Soft Delete e Expediente Personalizado por Dia na Nuvem.
  */
 
 const adminApp = {
     currentTab: 'agenda',
-    agendaSubTab: 'upcoming',
+    agendaSubTab: 'upcoming', 
     currentHolidays: [],
 
     async renderDashboard() {
@@ -58,11 +58,11 @@ const adminApp = {
     },
 
     async getContentByTab() {
-        switch (this.currentTab) {
+        switch(this.currentTab) {
             case 'agenda': return await this.renderAgendaView();
             case 'patients': return await this.renderPatientsView();
             case 'reports': return this.renderReportsView();
-            case 'settings': return this.renderSettingsView();
+            case 'settings': return await this.renderSettingsView();
             default: return '';
         }
     },
@@ -136,10 +136,10 @@ const adminApp = {
     async generateReport() {
         const period = document.getElementById('report-period').value;
         const dateInput = document.getElementById('report-date-val')?.value;
-
+        
         const allAppointments = await dbService.getAppointments(null, ROLES.PSYCHOLOGIST);
         const patients = await dbService.getAllPatients();
-
+        
         let filteredApps = allAppointments;
         let periodTitle = "Histórico Completo";
 
@@ -154,7 +154,7 @@ const adminApp = {
             periodTitle = `Relatório Anual - ${dateInput}`;
         }
 
-        filteredApps.sort((a, b) => new Date(a.date) - new Date(b.date));
+        filteredApps.sort((a,b) => new Date(a.date) - new Date(b.date));
 
         // 3. Calcula as Métricas (KPIs) usando o sistema de Status
         const now = new Date();
@@ -163,11 +163,11 @@ const adminApp = {
         const cancelledPat = filteredApps.filter(a => a.status === 'CANCELLED_BY_PATIENT');
         const cancelledPsy = filteredApps.filter(a => a.status === 'CANCELLED_BY_PSYCHOLOGIST');
         const totalCancelled = cancelledPat.length + cancelledPsy.length;
-
+        
         const uniquePatientIds = [...new Set(filteredApps.map(a => a.patientId))];
 
         const reportContainer = document.getElementById('printable-report');
-
+        
         let html = `
             <div class="border-b-2 border-slate-800 pb-6 mb-6 text-center md:text-left flex flex-col md:flex-row justify-between items-center">
                 <div>
@@ -216,11 +216,11 @@ const adminApp = {
                     </thead>
                     <tbody class="divide-y divide-slate-100">
             `;
-
+            
             for (let appt of filteredApps) {
                 const pat = patients.find(p => p.id === appt.patientId);
                 const d = new Date(appt.date);
-
+                
                 let statusBadge = '';
                 if (appt.status === 'CANCELLED_BY_PATIENT') {
                     statusBadge = `<span class="bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs font-bold">Cancelada pelo Paciente</span>`;
@@ -234,7 +234,7 @@ const adminApp = {
 
                 html += `
                     <tr>
-                        <td class="px-4 py-3 text-slate-600">${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</td>
+                        <td class="px-4 py-3 text-slate-600">${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</td>
                         <td class="px-4 py-3 font-semibold text-slate-800">${pat ? pat.name : 'Desconhecido'}</td>
                         <td class="px-4 py-3">${statusBadge}</td>
                     </tr>
@@ -267,20 +267,20 @@ const adminApp = {
         window.print();
         setTimeout(() => document.getElementById('print-overrides').remove(), 1000);
     },
-
+    
     // ==========================================
     // 📅 VISÃO DE AGENDA 
     // ==========================================
     async renderAgendaView() {
         const appointments = await dbService.getAppointments(null, ROLES.PSYCHOLOGIST);
         const now = new Date();
-
+        
         // CIRURGIA: Lendo o link que a Dra. Ionete salvou no painel!
         const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {};
         const dynamicMeetUrl = settings.meetUrl || CONFIG.MEET_URL;
 
-        const upcomingApps = appointments.filter(a => new Date(a.date) >= now && (!a.status || a.status === 'SCHEDULED')).sort((a, b) => new Date(a.date) - new Date(b.date));
-        const pastApps = appointments.filter(a => new Date(a.date) < now || (a.status && a.status.startsWith('CANCELLED'))).sort((a, b) => new Date(b.date) - new Date(a.date));
+        const upcomingApps = appointments.filter(a => new Date(a.date) >= now && (!a.status || a.status === 'SCHEDULED')).sort((a,b) => new Date(a.date) - new Date(b.date));
+        const pastApps = appointments.filter(a => new Date(a.date) < now || (a.status && a.status.startsWith('CANCELLED'))).sort((a,b) => new Date(b.date) - new Date(a.date));
 
         let html = `
             <div class="max-w-4xl mx-auto mb-6 flex space-x-4 border-b border-slate-200 print:hidden">
@@ -307,10 +307,10 @@ const adminApp = {
                 const notes = await dbService.getNotesByPatient(appt.patientId);
                 const sessionDateStr = date.toISOString().split('T')[0];
                 const noteObj = notes.find(n => n.date.startsWith(sessionDateStr));
-
+                
                 let visualStatus = '';
-                if (appt.status === 'CANCELLED_BY_PATIENT') visualStatus = `<span class="block text-xs font-bold text-orange-600 bg-orange-50 mt-1 px-2 py-1 rounded">Cancelada pelo Paciente</span>`;
-                else if (appt.status === 'CANCELLED_BY_PSYCHOLOGIST') visualStatus = `<span class="block text-xs font-bold text-red-600 bg-red-50 mt-1 px-2 py-1 rounded">Cancelada por Você</span>`;
+                if(appt.status === 'CANCELLED_BY_PATIENT') visualStatus = `<span class="block text-xs font-bold text-orange-600 bg-orange-50 mt-1 px-2 py-1 rounded">Cancelada pelo Paciente</span>`;
+                else if(appt.status === 'CANCELLED_BY_PSYCHOLOGIST') visualStatus = `<span class="block text-xs font-bold text-red-600 bg-red-50 mt-1 px-2 py-1 rounded">Cancelada por Você</span>`;
                 else visualStatus = `<span class="block text-xs font-bold text-teal-600 bg-teal-50 mt-1 px-2 py-1 rounded">Sessão Concluída</span>`;
 
                 const noteSnippet = noteObj ? `<strong>Resumo:</strong> ${noteObj.text.substring(0, 80)}...` : `<span class="italic opacity-70">Sem anotações nesta data.</span>`;
@@ -319,7 +319,7 @@ const adminApp = {
                     <div class="bg-white border border-slate-200 rounded-xl p-5 mb-3 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 ${appt.status && appt.status.includes('CANCELLED') ? 'opacity-75 bg-slate-50' : ''}">
                         <div class="flex items-center">
                             <div class="w-16 h-16 rounded-lg bg-slate-100 flex flex-col items-center justify-center mr-4 shrink-0">
-                                <span class="text-sm text-slate-500 uppercase font-bold">${date.toLocaleDateString('pt-BR', { month: 'short' })}</span>
+                                <span class="text-sm text-slate-500 uppercase font-bold">${date.toLocaleDateString('pt-BR', {month: 'short'})}</span>
                                 <span class="text-xl font-black text-slate-800">${date.getDate()}</span>
                             </div>
                             <div>
@@ -340,7 +340,7 @@ const adminApp = {
                 <div class="group flex flex-col sm:flex-row items-center bg-white border border-slate-200 rounded-xl p-4 mb-3 hover:border-sky-300 transition-all shadow-sm relative gap-4">
                     <div class="w-full sm:w-20 text-center sm:border-r border-slate-100 sm:mr-4 shrink-0">
                         <span class="block text-xl font-bold text-slate-700">${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}</span>
-                        <span class="text-xs text-slate-400 uppercase font-medium">${date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
+                        <span class="text-xs text-slate-400 uppercase font-medium">${date.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})}</span>
                     </div>
                     <div class="flex-1 text-center sm:text-left">
                         <h4 class="font-bold text-slate-800 flex items-center justify-center sm:justify-start">${patient?.name || 'Paciente Externo'} ${waButton}</h4>
@@ -365,7 +365,7 @@ const adminApp = {
 
     // AQUI: Atualizado cirurgicamente para usar o dbService do Supabase
     async deleteAppointment(appId) {
-        if (confirm("Tem certeza que deseja cancelar esta sessão? O paciente não a verá mais e o horário será liberado.")) {
+        if(confirm("Tem certeza que deseja cancelar esta sessão? O paciente não a verá mais e o horário será liberado.")) {
             try {
                 await dbService.updateAppointmentStatus(appId, 'CANCELLED_BY_PSYCHOLOGIST');
                 app.showNotification("Cancelada", "Sessão marcada como cancelada por você.", true);
@@ -396,8 +396,8 @@ const adminApp = {
     // AQUI: Atualizado cirurgicamente para usar o dbService do Supabase
     async saveEditedAppointment(appId) {
         const newVal = document.getElementById('new-app-date').value;
-        if (!newVal) return;
-
+        if(!newVal) return;
+        
         try {
             await dbService.rescheduleAppointment(appId, newVal + ":00");
             document.getElementById('edit-modal').remove();
@@ -461,112 +461,425 @@ const adminApp = {
         if (this.currentTab === 'agenda' && this.agendaSubTab === 'past') this.renderDashboard();
     },
 
-    renderSettingsView() {
-        const s = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {
+    // ==========================================
+    // ⚙️ VISÃO DE CONFIGURAÇÕES (PERSONALIZADA POR DIA DA SEMANA)
+    // ==========================================
+    async renderSettingsView() {
+        let defaultSettings = {
+            meetUrl: CONFIG.MEET_URL,
             workDays: [1, 2, 3, 4, 5],
-            startTime: '09:00', endTime: '17:00',
-            lunchStart: '12:00', lunchEnd: '13:00',
-            saturdayStartTime: '08:00', saturdayEndTime: '13:00', // 👈 ADICIONADO AQUI
-            sessionDuration: 50, buffer: 10,
+            startTime: '09:00',
+            endTime: '17:00',
+            lunchStart: '12:00',
+            lunchEnd: '13:00',
+            sessionDuration: 50,
+            buffer: 10,
             availabilityStartDate: new Date().toISOString().split('T')[0],
             availabilityEndDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            holidays: []
+            holidays: [],
+            customSchedule: null
         };
+
+        let savedLocal = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {};
+        let s = { ...defaultSettings, ...savedLocal };
+
+        // Busca na nuvem (Supabase) para garantir que o painel mostre sempre o que está em produção
+        try {
+            const supabaseConn = window.supabaseClient || window.supabase || CONFIG.supabaseClient;
+            if (supabaseConn) {
+                const { data, error } = await supabaseConn
+                    .from('configuracoes')
+                    .select('dados_config')
+                    .eq('id', 1)
+                    .single();
+
+                if (!error && data && data.dados_config && Object.keys(data.dados_config).length > 0) {
+                    s = { ...s, ...data.dados_config };
+                    localStorage.setItem(CONFIG.STORAGE_KEYS.SETTINGS, JSON.stringify(s));
+                }
+            }
+        } catch (err) {
+            console.warn("Aviso ao ler configurações da nuvem no Admin:", err);
+        }
+
+        // Inicializa a agenda individual por dia da semana se ainda não existir
+        const daysInfo = [
+            { id: 1, name: 'Segunda-feira', short: 'Seg' },
+            { id: 2, name: 'Terça-feira', short: 'Ter' },
+            { id: 3, name: 'Quarta-feira', short: 'Qua' },
+            { id: 4, name: 'Quinta-feira', short: 'Qui' },
+            { id: 5, name: 'Sexta-feira', short: 'Sex' },
+            { id: 6, name: 'Sábado', short: 'Sáb' },
+            { id: 0, name: 'Domingo', short: 'Dom' }
+        ];
+
+        if (!s.customSchedule || typeof s.customSchedule !== 'object') {
+            s.customSchedule = {};
+            daysInfo.forEach(d => {
+                const isSaturday = (d.id === 6);
+                const isSunday = (d.id === 0);
+                s.customSchedule[d.id] = {
+                    active: Array.isArray(s.workDays) ? s.workDays.includes(d.id) : (!isSaturday && !isSunday),
+                    start: isSaturday ? (s.saturdayStartTime || '08:00') : (s.startTime || '09:00'),
+                    end: isSaturday ? (s.saturdayEndTime || '13:00') : (s.endTime || '17:00'),
+                    hasLunch: !isSaturday && !isSunday,
+                    lunchStart: s.lunchStart || '12:00',
+                    lunchEnd: s.lunchEnd || '13:00'
+                };
+            });
+        }
+
+        this.currentHolidays = s.holidays || [];
         setTimeout(() => this.updateHolidaysListUI(), 50);
+
+        const scheduleRowsHtml = daysInfo.map(d => {
+            const dayCfg = s.customSchedule[d.id] || {
+                active: false,
+                start: '09:00',
+                end: '17:00',
+                hasLunch: true,
+                lunchStart: '12:00',
+                lunchEnd: '13:00'
+            };
+
+            return `
+                <div id="day-row-${d.id}" class="p-4 rounded-xl border transition-all ${dayCfg.active ? 'bg-white border-sky-200 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-60'}">
+                    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                        
+                        <!-- Coluna 1: Ativar/Desativar Dia -->
+                        <div class="flex items-center justify-between lg:w-48 shrink-0">
+                            <label class="inline-flex items-center cursor-pointer select-none">
+                                <input type="checkbox" id="day-active-${d.id}" value="${d.id}" 
+                                    onchange="adminApp.toggleDayRow(${d.id})"
+                                    class="day-checkbox w-5 h-5 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer" 
+                                    ${dayCfg.active ? 'checked' : ''}>
+                                <span class="ml-3 font-bold text-slate-800 text-base">${d.name}</span>
+                            </label>
+                            <span id="day-badge-${d.id}" class="lg:hidden text-[11px] font-bold px-2.5 py-0.5 rounded-full ${dayCfg.active ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-500'}">
+                                ${dayCfg.active ? 'Ativo' : 'Sem expediente'}
+                            </span>
+                        </div>
+
+                        <!-- Coluna 2: Início e Fim do Expediente -->
+                        <div id="day-controls-${d.id}" class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 ${dayCfg.active ? '' : 'pointer-events-none'}">
+                            <div class="bg-slate-50 p-3 rounded-lg border border-slate-200/80">
+                                <span class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Horário de Funcionamento</span>
+                                <div class="flex items-center gap-2">
+                                    <div class="flex-1">
+                                        <span class="text-[10px] text-slate-400 block mb-0.5">Início</span>
+                                        <input type="time" id="day-start-${d.id}" value="${dayCfg.start}" class="w-full p-1.5 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-md outline-none focus:border-sky-500">
+                                    </div>
+                                    <span class="text-slate-400 font-bold mt-4">até</span>
+                                    <div class="flex-1">
+                                        <span class="text-[10px] text-slate-400 block mb-0.5">Fim</span>
+                                        <input type="time" id="day-end-${d.id}" value="${dayCfg.end}" class="w-full p-1.5 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-md outline-none focus:border-sky-500">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Coluna 3: Pausa de Almoço / Intervalo -->
+                            <div class="bg-slate-50 p-3 rounded-lg border border-slate-200/80">
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <label class="inline-flex items-center cursor-pointer select-none">
+                                        <input type="checkbox" id="day-has-lunch-${d.id}" 
+                                            onchange="adminApp.toggleLunchInputs(${d.id})"
+                                            class="w-3.5 h-3.5 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer" 
+                                            ${dayCfg.hasLunch ? 'checked' : ''}>
+                                        <span class="ml-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Pausa de Almoço</span>
+                                    </label>
+                                </div>
+                                <div id="day-lunch-box-${d.id}" class="flex items-center gap-2 transition-opacity ${dayCfg.hasLunch ? '' : 'opacity-30 pointer-events-none'}">
+                                    <div class="flex-1">
+                                        <span class="text-[10px] text-slate-400 block mb-0.5">Início Pausa</span>
+                                        <input type="time" id="day-lunch-start-${d.id}" value="${dayCfg.lunchStart}" class="w-full p-1.5 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-md outline-none focus:border-sky-500">
+                                    </div>
+                                    <span class="text-slate-400 font-bold mt-4">até</span>
+                                    <div class="flex-1">
+                                        <span class="text-[10px] text-slate-400 block mb-0.5">Fim Pausa</span>
+                                        <input type="time" id="day-lunch-end-${d.id}" value="${dayCfg.lunchEnd}" class="w-full p-1.5 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-md outline-none focus:border-sky-500">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            `;
+        }).join('');
 
         return `
             <div class="max-w-4xl mx-auto space-y-6 pb-12">
-                <div class="bg-white rounded-2xl p-6 border"><h3 class="font-bold mb-4">Link da Reunião</h3><input type="url" id="custom-meet-url" value="${s.meetUrl || CONFIG.MEET_URL}" class="w-full p-2.5 border rounded-lg"></div>
-                <div class="bg-white rounded-2xl p-6 border"><h3 class="font-bold mb-4">Período e Feriados</h3>
-                    <div class="grid grid-cols-2 gap-4 mb-4">
-                        <div><label class="text-sm">Início</label><input type="date" id="avail-start" value="${s.availabilityStartDate}" class="w-full p-2 border rounded-lg"></div>
-                        <div><label class="text-sm">Fim</label><input type="date" id="avail-end" value="${s.availabilityEndDate}" class="w-full p-2 border rounded-lg"></div>
+                
+                <!-- CABEÇALHO EXPLICATIVO -->
+                <div class="bg-sky-50 border border-sky-100 rounded-2xl p-5 flex items-start gap-4">
+                    <div class="p-2.5 bg-sky-100 text-sky-600 rounded-xl shrink-0 mt-0.5">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     </div>
-                    <div class="flex gap-2"><input type="date" id="new-holiday-date" class="flex-1 p-2 border rounded-lg"><button onclick="adminApp.addHoliday()" class="px-4 py-2 bg-red-50 text-red-700 font-bold rounded-lg border">Bloquear Data</button></div>
-                    <div id="holidays-list" class="mt-4 flex flex-wrap gap-2"></div>
-                </div>
-                <div class="bg-white rounded-2xl p-6 border"><h3 class="font-bold mb-4">Configuração Semanal</h3>
-                    <div class="grid grid-cols-2 gap-4 mb-4">
-                        <div><label class="text-sm">Duração (min)</label><input type="number" id="session-duration" value="${s.sessionDuration}" class="w-full p-2 border rounded-lg"></div>
-                        <div><label class="text-sm">Buffer (min)</label><input type="number" id="session-buffer" value="${s.buffer}" class="w-full p-2 border rounded-lg"></div>
-                    </div>
-                    <div class="flex flex-wrap gap-2 mb-4">${[{ n: 1, l: 'Seg' }, { n: 2, l: 'Ter' }, { n: 3, l: 'Qua' }, { n: 4, l: 'Qui' }, { n: 5, l: 'Sex' }, { n: 6, l: 'Sáb' }].map(d => `<label class="px-4 py-2 border rounded-lg"><input type="checkbox" value="${d.n}" class="day-checkbox mr-2" ${s.workDays.includes(d.n) ? 'checked' : ''}>${d.l}</label>`).join('')}</div>
-                    <div class="grid grid-cols-2 gap-4"><div class="p-4 border rounded-xl"><label class="text-sm">Início/Fim do Dia</label><div class="flex gap-2 mt-2"><input type="time" id="start-time" value="${s.startTime}" class="p-2 border rounded-lg w-full"><input type="time" id="end-time" value="${s.endTime}" class="p-2 border rounded-lg w-full"></div></div><div class="p-4 border rounded-xl"><label class="text-sm">Início/Fim do Almoço</label><div class="flex gap-2 mt-2"><input type="time" id="lunch-start" value="${s.lunchStart}" class="p-2 border rounded-lg w-full"><input type="time" id="lunch-end" value="${s.lunchEnd}" class="p-2 border rounded-lg w-full"></div></div></div>
-                </div>
-                <div class="p-4 border rounded-xl mt-4 bg-slate-50">
-                    <label class="text-sm font-bold text-slate-700">Início/Fim aos Sábados</label>
-                    <div class="flex gap-2 mt-2">
-                        <input type="time" id="sat-start-time" value="${s.saturdayStartTime || '08:00'}" class="p-2 border rounded-lg w-full bg-white">
-                        <input type="time" id="sat-end-time" value="${s.saturdayEndTime || '13:00'}" class="p-2 border rounded-lg w-full bg-white">
+                    <div>
+                        <h2 class="text-base font-bold text-sky-950">Central de Configuração da Agenda</h2>
+                        <p class="text-xs text-sky-800 mt-1 leading-relaxed">
+                            Todas as alterações salvas nesta página atualizam <strong>instantaneamente</strong> o calendário de agendamentos dos pacientes. Configure abaixo o link das chamadas, o período aberto na agenda e os horários individuais de cada dia da semana.
+                        </p>
                     </div>
                 </div>
 
+                <!-- 1. LINK DA REUNIÃO -->
+                <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+                    <div class="mb-4">
+                        <h3 class="text-lg font-bold text-slate-800 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                            1. Sala de Atendimento Online (Google Meet)
+                        </h3>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Legenda: Este é o link para onde o paciente será redirecionado ao clicar no botão <strong>"Entrar na Sala Virtual"</strong> no dia da consulta.
+                        </p>
+                    </div>
+                    <input type="url" id="custom-meet-url" value="${s.meetUrl || CONFIG.MEET_URL}" placeholder="https://meet.google.com/..." class="w-full p-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-sky-500 bg-slate-50/50">
+                </div>
 
-                <button onclick="adminApp.saveSettings()" class="w-full py-4 bg-slate-900 text-white rounded-xl font-bold">Salvar Configurações</button>
+                <!-- 2. PERÍODO E FERIADOS -->
+                <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+                    <div class="mb-4">
+                        <h3 class="text-lg font-bold text-slate-800 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            2. Janela de Datas Disponíveis e Feriados
+                        </h3>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Legenda: Defina a data inicial e final que ficará visível para os pacientes agendarem, além de bloquear dias específicos (feriados, recessos ou folgas).
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Abertura da Agenda (Data Início)</label>
+                            <p class="text-[11px] text-slate-400 mb-2">Primeiro dia liberado para agendamento.</p>
+                            <input type="date" id="avail-start" value="${s.availabilityStartDate}" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-sky-500">
+                        </div>
+                        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Limite da Agenda (Data Fim)</label>
+                            <p class="text-[11px] text-slate-400 mb-2">Último dia liberado para agendamento.</p>
+                            <input type="date" id="avail-end" value="${s.availabilityEndDate}" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-sky-500">
+                        </div>
+                    </div>
+
+                    <div class="border-t border-slate-100 pt-5">
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Bloquear Feriados ou Dias de Folga</label>
+                        <p class="text-[11px] text-slate-400 mb-3">Selecione uma data abaixo e clique em "Bloquear Data". O dia aparecerá como indisponível para todos os pacientes.</p>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <input type="date" id="new-holiday-date" class="flex-1 p-2.5 border border-slate-200 rounded-xl text-sm outline-none focus:border-red-400">
+                            <button onclick="adminApp.addHoliday()" class="px-5 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-sm rounded-xl border border-red-200 transition-colors shrink-0">
+                                + Bloquear Data
+                            </button>
+                        </div>
+                        <div id="holidays-list" class="mt-4 flex flex-wrap gap-2"></div>
+                    </div>
+                </div>
+
+                <!-- 3. DURAÇÃO E INTERVALO ENTRE SESSÕES -->
+                <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+                    <div class="mb-4">
+                        <h3 class="text-lg font-bold text-slate-800 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            3. Tempo de Sessão e Intervalo (Buffer)
+                        </h3>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Legenda: O sistema calcula automaticamente os botões de horário somando a <strong>Duração da Sessão + Tempo de Intervalo</strong> (ex: 50 min de consulta + 10 min de pausa = horários de 1 em 1 hora).
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Duração da Consulta (Minutos)</label>
+                            <p class="text-[11px] text-slate-400 mb-2">Tempo efetivo de cada atendimento.</p>
+                            <input type="number" id="session-duration" value="${s.sessionDuration}" min="15" max="180" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-sky-500">
+                        </div>
+                        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Intervalo entre Pacientes / Buffer (Minutos)</label>
+                            <p class="text-[11px] text-slate-400 mb-2">Pausa para descanso ou anotações entre sessões.</p>
+                            <input type="number" id="session-buffer" value="${s.buffer}" min="0" max="120" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-sky-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. EXPEDIENTE POR DIA DA SEMANA -->
+                <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+                    <div class="mb-6">
+                        <h3 class="text-lg font-bold text-slate-800 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+                            4. Dias de Funcionamento e Horários por Dia da Semana
+                        </h3>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Legenda: Marque os dias da semana em que haverá expediente e defina manualmente o horário de início, fim e pausa de almoço de cada dia. Os dias desmarcados não aparecerão para o cliente.
+                        </p>
+                    </div>
+
+                    <div class="space-y-3">
+                        ${scheduleRowsHtml}
+                    </div>
+                </div>
+
+                <!-- BOTÃO SALVAR -->
+                <button id="btn-save-settings" onclick="adminApp.saveSettings()" class="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-base shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    Salvar Configurações e Atualizar Agenda dos Clientes
+                </button>
             </div>
         `;
     },
 
-    addHoliday() { const i = document.getElementById('new-holiday-date'); if (i.value && !this.currentHolidays.includes(i.value)) { this.currentHolidays.push(i.value); this.updateHolidaysListUI(); } i.value = ''; },
-    removeHoliday(d) { this.currentHolidays = this.currentHolidays.filter(x => x !== d); this.updateHolidaysListUI(); },
-    updateHolidaysListUI() { document.getElementById('holidays-list').innerHTML = this.currentHolidays.sort().map(d => `<span class="bg-red-100 px-3 py-1 rounded-lg border flex items-center">${d.split('-').reverse().join('/')} <button onclick="adminApp.removeHoliday('${d}')" class="ml-2 font-bold text-red-600">&times;</button></span>`).join(''); },
+    toggleDayRow(dayId) {
+        const checkbox = document.getElementById(`day-active-${dayId}`);
+        const row = document.getElementById(`day-row-${dayId}`);
+        const controls = document.getElementById(`day-controls-${dayId}`);
+        const badge = document.getElementById(`day-badge-${dayId}`);
+
+        if (checkbox.checked) {
+            row.classList.remove('bg-slate-50', 'border-slate-200', 'opacity-60');
+            row.classList.add('bg-white', 'border-sky-200', 'shadow-sm');
+            controls.classList.remove('pointer-events-none');
+            if (badge) {
+                badge.textContent = 'Ativo';
+                badge.className = 'lg:hidden text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800';
+            }
+        } else {
+            row.classList.add('bg-slate-50', 'border-slate-200', 'opacity-60');
+            row.classList.remove('bg-white', 'border-sky-200', 'shadow-sm');
+            controls.classList.add('pointer-events-none');
+            if (badge) {
+                badge.textContent = 'Sem expediente';
+                badge.className = 'lg:hidden text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-500';
+            }
+        }
+    },
+
+    toggleLunchInputs(dayId) {
+        const hasLunch = document.getElementById(`day-has-lunch-${dayId}`).checked;
+        const lunchBox = document.getElementById(`day-lunch-box-${dayId}`);
+        if (hasLunch) {
+            lunchBox.classList.remove('opacity-30', 'pointer-events-none');
+        } else {
+            lunchBox.classList.add('opacity-30', 'pointer-events-none');
+        }
+    },
+
+    addHoliday() {
+        const i = document.getElementById('new-holiday-date');
+        if (i.value && !this.currentHolidays.includes(i.value)) {
+            this.currentHolidays.push(i.value);
+            this.updateHolidaysListUI();
+        }
+        i.value = '';
+    },
+
+    removeHoliday(d) {
+        this.currentHolidays = this.currentHolidays.filter(x => x !== d);
+        this.updateHolidaysListUI();
+    },
+
+    updateHolidaysListUI() {
+        const listEl = document.getElementById('holidays-list');
+        if (!listEl) return;
+        if (this.currentHolidays.length === 0) {
+            listEl.innerHTML = `<span class="text-xs text-slate-400 italic">Nenhuma data bloqueada no momento.</span>`;
+            return;
+        }
+        listEl.innerHTML = this.currentHolidays.sort().map(d => `
+            <span class="bg-red-50 text-red-700 text-xs font-bold px-3 py-1.5 rounded-lg border border-red-200 flex items-center shadow-sm">
+                ${d.split('-').reverse().join('/')} 
+                <button onclick="adminApp.removeHoliday('${d}')" title="Desbloquear data" class="ml-2 font-black text-red-500 hover:text-red-800 text-sm leading-none">&times;</button>
+            </span>
+        `).join('');
+    },
 
     async saveSettings() {
+        const btn = document.getElementById('btn-save-settings');
+        const originalText = btn ? btn.innerHTML : 'Salvar Configurações';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<span class="animate-pulse">Salvando configurações na nuvem...</span>`;
+        }
+
         try {
-            // 1. Coleta todos os dados do painel Admin
-            CONFIG.MEET_URL = document.getElementById('custom-meet-url').value;
+            const customSchedule = {};
+            const workDays = [];
+
+            [0, 1, 2, 3, 4, 5, 6].forEach(dayId => {
+                const activeEl = document.getElementById(`day-active-${dayId}`);
+                const isActive = activeEl ? activeEl.checked : false;
+                const start = document.getElementById(`day-start-${dayId}`)?.value || '09:00';
+                const end = document.getElementById(`day-end-${dayId}`)?.value || '17:00';
+                const hasLunch = document.getElementById(`day-has-lunch-${dayId}`)?.checked || false;
+                const lunchStart = document.getElementById(`day-lunch-start-${dayId}`)?.value || '12:00';
+                const lunchEnd = document.getElementById(`day-lunch-end-${dayId}`)?.value || '13:00';
+
+                if (isActive) workDays.push(dayId);
+
+                customSchedule[dayId] = {
+                    active: isActive,
+                    start: start,
+                    end: end,
+                    hasLunch: hasLunch,
+                    lunchStart: lunchStart,
+                    lunchEnd: lunchEnd
+                };
+            });
+
+            const meetUrlVal = document.getElementById('custom-meet-url').value;
+            CONFIG.MEET_URL = meetUrlVal;
+
+            // Mantém propriedades antigas preenchidas para compatibilidade 100% com o restante do código
+            const refDay = customSchedule[1] || { start: '09:00', end: '17:00', lunchStart: '12:00', lunchEnd: '13:00' };
+            const satDay = customSchedule[6] || { start: '08:00', end: '13:00' };
+
             const s = {
-                meetUrl: document.getElementById('custom-meet-url').value,
-                workDays: [...document.querySelectorAll('.day-checkbox:checked')].map(c => +c.value),
-                startTime: document.getElementById('start-time').value,
-                endTime: document.getElementById('end-time').value,
-                lunchStart: document.getElementById('lunch-start').value,
-                lunchEnd: document.getElementById('lunch-end').value,
-                saturdayStartTime: document.getElementById('sat-start-time').value, // 👈 ADICIONE AQUI
-                saturdayEndTime: document.getElementById('sat-end-time').value,     // 👈 ADICIONE AQUI
-                sessionDuration: +document.getElementById('session-duration').value,
-                buffer: +document.getElementById('session-buffer').value,
+                meetUrl: meetUrlVal,
+                workDays: workDays,
+                startTime: refDay.start,
+                endTime: refDay.end,
+                lunchStart: refDay.lunchStart,
+                lunchEnd: refDay.lunchEnd,
+                saturdayStartTime: satDay.start,
+                saturdayEndTime: satDay.end,
+                customSchedule: customSchedule,
+                sessionDuration: +document.getElementById('session-duration').value || 50,
+                buffer: +document.getElementById('session-buffer').value || 10,
                 availabilityStartDate: document.getElementById('avail-start').value,
                 availabilityEndDate: document.getElementById('avail-end').value,
                 holidays: this.currentHolidays
             };
 
-            // 2. Atualiza o cache local (para a tela da Admin não piscar)
+            // 1. Salva no LocalStorage
             localStorage.setItem(CONFIG.STORAGE_KEYS.SETTINGS, JSON.stringify(s));
 
-            // 3. O Bisturi: Envia a configuração para o Supabase
+            // 2. Salva no Supabase (tabela configuracoes, id = 1) para refletir imediatamente para todos os pacientes
             const supabaseConn = window.supabaseClient || window.supabase || CONFIG.supabaseClient;
+            if (supabaseConn) {
+                const { data: updatedRows, error: updateError } = await supabaseConn
+                    .from('configuracoes')
+                    .update({ dados_config: s })
+                    .eq('id', 1)
+                    .select();
 
-            if (!supabaseConn) {
-                console.error("Conexão Supabase não encontrada no Admin.");
-                app.showNotification('Erro', 'Falha na conexão com o banco.', true);
-                return; // Para a execução aqui
+                if (updateError) throw updateError;
+
+                // Caso a linha id=1 ainda não exista na tabela, insere automaticamente
+                if (!updatedRows || updatedRows.length === 0) {
+                    const { error: insertError } = await supabaseConn
+                        .from('configuracoes')
+                        .insert([{ id: 1, dados_config: s }]);
+                    if (insertError) throw insertError;
+                }
             }
 
-            // ESPIÃO 1: Avisa o que estamos tentando enviar
-            console.log("🚀 Tentando enviar para o Supabase (UPDATE):", s);
-
-            // TROCAMOS PARA O COMANDO UPDATE DIRETO E RETO!
-            const { data, error } = await supabaseConn
-                .from('configuracoes')
-                .update({ dados_config: s })
-                .eq('id', 1)
-                .select();
-
-            // ESPIÃO 2: Mostra a resposta real do servidor do Supabase
-            console.log("📥 Resposta do Supabase:", { data, error });
-
-            if (error) {
-                console.error("Erro Supabase:", error.message, error.details);
-                throw error;
+            app.showNotification('Configurações Salvas!', 'Os horários de funcionamento foram atualizados para todos os clientes.', false);
+        } catch (err) {
+            console.error("Erro ao salvar configurações:", err);
+            app.showNotification('Aviso', 'Salvo localmente, mas houve um erro ao sincronizar com a nuvem: ' + err.message, true);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
             }
-
-            app.showNotification('Sucesso', 'Horários atualizados no sistema e para os pacientes!', false);
-
-        } catch (error) {
-            console.error("Erro fatal ao salvar no banco:", error);
-            app.showNotification('Erro', 'Não foi possível salvar na nuvem.', true);
         }
-
     }
 };
