@@ -147,5 +147,18 @@ const dbService = {
             throw new Error("Não foi possível salvar a evolução clínica.");
         }
         return data;
+    },
+
+    async updatePatientNote(noteId, newText) {
+        const { data, error } = await window.supabaseClient
+            .from('notes')
+            .update({ text: newText })
+            .eq('id', noteId);
+
+        if (error) {
+            console.error("Erro ao editar anotação:", error);
+            throw new Error("Não foi possível atualizar a anotação.");
+        }
+        return data;
     }
 };
