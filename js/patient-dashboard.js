@@ -22,46 +22,41 @@ const patientApp = {
             // Busca todos os agendamentos da clínica no Supabase para bloquear a agenda
             const allAppointments = await dbService.getAppointments(null, ROLES.PSYCHOLOGIST).catch(() => patientAppointments);
 
-            // 1. Definimos o padrão como um plano de segurança (fallback) caso falhe a internet
+            // 1. Plano de segurança (fallback)
             let settings = {
                 workDays: [1, 2, 3, 4, 5],
                 startTime: '09:00', endTime: '17:00',
                 lunchStart: '12:00', lunchEnd: '13:00',
-                saturdayStartTime: '08:00', saturdayEndTime: '13:00', // 👈 ADICIONADO AQUI
+                saturdayStartTime: '08:00', saturdayEndTime: '13:00',
                 sessionDuration: 50, buffer: 10,
                 availabilityStartDate: new Date().toISOString().split('T')[0],
                 availabilityEndDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                holidays: []
+                holidays: [],
+                customSchedule: null
             };
 
-            // 2. Buscamos a configuração real na nuvem (Supabase) - BLINDADO COM ESPIÕES
+            const cachedSettings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS));
+            if (cachedSettings) {
+                settings = { ...settings, ...cachedSettings };
+            }
+
+            // 2. Busca a configuração real na nuvem (Supabase) para refletir na hora o que o Admin salvou
             try {
                 const supabaseConn = window.supabaseClient || window.supabase || CONFIG.supabaseClient;
+                if (supabaseConn) {
+                    const { data, error } = await supabaseConn
+                        .from('configuracoes')
+                        .select('dados_config')
+                        .eq('id', 1)
+                        .single();
 
-                if (!supabaseConn) throw new Error("Cliente Supabase não encontrado no app do paciente");
-
-                console.log("🕵️ Paciente: Buscando horários na nuvem...");
-
-                const { data, error } = await supabaseConn
-                    .from('configuracoes')
-                    .select('dados_config')
-                    .eq('id', 1)
-                    .single();
-
-                console.log("📦 Paciente: Dados recebidos:", { data, error });
-
-                if (error) {
-                    console.warn("Aviso: Falha ao ler nuvem. Usando padrão.", error);
-                } else if (data && data.dados_config && Object.keys(data.dados_config).length > 0) {
-                    // 🕵️ BISTURI: Uso de spread para garantir que campos de sábado não sumam
-                    settings = { ...settings, ...data.dados_config };
-                    localStorage.setItem(CONFIG.STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-                    console.log("✅ Horários do paciente atualizados com sucesso!");
-                } else {
-                    console.warn("Aviso: Tabela encontrada, mas vazia. Usando padrão.");
+                    if (!error && data && data.dados_config && Object.keys(data.dados_config).length > 0) {
+                        settings = { ...settings, ...data.dados_config };
+                        localStorage.setItem(CONFIG.STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+                    }
                 }
             } catch (err) {
-                console.error("❌ Erro fatal na conexão do paciente:", err);
+                console.warn("Aviso: Usando configurações em cache local.", err);
             }
 
             const now = new Date();
@@ -137,6 +132,7 @@ const patientApp = {
         const formattedDate = appDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
         const formattedTime = appDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
+        // CIRURGIA: Lê o link dinâmico salvo pela Dra. Ionete no painel de Configuração
         const settings = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SETTINGS)) || {};
         const dynamicMeetUrl = settings.meetUrl || settings.meetingLink || settings.meetLink || CONFIG.MEET_URL;
 
@@ -214,6 +210,7 @@ const patientApp = {
                 true
             );
 
+            // Adiciona modal para contato via WhatsApp buscando o admin no Supabase
             const { data: admins } = await window.supabaseClient.from('profiles').select('phone').eq('role', ROLES.PSYCHOLOGIST).limit(1);
             const adminPhone = (admins && admins[0]) ? admins[0].phone : '';
             const cleanPhone = adminPhone ? adminPhone.replace(/\D/g, '') : '';
@@ -273,42 +270,60 @@ const patientApp = {
                 return a.date ? a.date.split('T')[0] : '';
             });
 
-        const timeToMins = (s) => { 
+        const timeToMins = (s) => {
             if (!s || typeof s !== 'string') return 0;
-            const [h, m] = s.split(':').map(Number); 
-            return (h * 60) + (m || 0); 
+            const [h, m] = s.split(':').map(Number);
+            return (h * 60) + (m || 0);
         };
 
-        const lunchStart = timeToMins(settings.lunchStart || '12:00');
-        const lunchEnd = timeToMins(settings.lunchEnd || '13:00');
-        const step = (settings.sessionDuration || 50) + (settings.buffer || 10);
+        const sessionDuration = Number(settings.sessionDuration) || 50;
+        const buffer = Number(settings.buffer) >= 0 ? Number(settings.buffer) : 10;
+        const step = sessionDuration + buffer;
 
         let cursor = new Date(startDate);
 
         while (cursor <= endDate) {
+            // Extração de data local à prova de fuso horário (UTC-3)
             const y = cursor.getFullYear();
             const m = String(cursor.getMonth() + 1).padStart(2, '0');
             const d = String(cursor.getDate()).padStart(2, '0');
             const dateStr = `${y}-${m}-${d}`;
-            
+
             const dayOfWeek = cursor.getDay(); // 0 = Dom, 1 = Seg ... 6 = Sáb
-            const isWorkDay = settings.workDays.includes(dayOfWeek);
             const isHoliday = holidays.includes(dateStr);
             const hasBookingThisDay = patientBookedDates.includes(dateStr);
 
+            // Verifica a configuração específica daquele dia da semana (customSchedule)
+            let isWorkDay = false;
+            let dayStartStr = settings.startTime || '09:00';
+            let dayEndStr = settings.endTime || '17:00';
+            let hasLunch = true;
+            let dayLunchStartStr = settings.lunchStart || '12:00';
+            let dayLunchEndStr = settings.lunchEnd || '13:00';
+
+            if (settings.customSchedule && settings.customSchedule[dayOfWeek]) {
+                const dayCfg = settings.customSchedule[dayOfWeek];
+                isWorkDay = Boolean(dayCfg.active);
+                dayStartStr = dayCfg.start || '09:00';
+                dayEndStr = dayCfg.end || '17:00';
+                hasLunch = Boolean(dayCfg.hasLunch);
+                dayLunchStartStr = dayCfg.lunchStart || '12:00';
+                dayLunchEndStr = dayCfg.lunchEnd || '13:00';
+            } else {
+                // Fallback caso ainda não tenha salvo com a estrutura nova
+                isWorkDay = Array.isArray(settings.workDays) && settings.workDays.includes(dayOfWeek);
+                if (dayOfWeek === 6) {
+                    dayStartStr = settings.saturdayStartTime || '08:00';
+                    dayEndStr = settings.saturdayEndTime || '13:00';
+                    hasLunch = false;
+                }
+            }
+
             if (isWorkDay) {
-                const isSaturday = (dayOfWeek === 6);
-                
-                const satStart = (settings.saturdayStartTime && settings.saturdayStartTime.trim() !== '') ? settings.saturdayStartTime : '08:00';
-                const satEnd = (settings.saturdayEndTime && settings.saturdayEndTime.trim() !== '') ? settings.saturdayEndTime : '13:00';
-                const weekStart = (settings.startTime && settings.startTime.trim() !== '') ? settings.startTime : '09:00';
-                const weekEnd = (settings.endTime && settings.endTime.trim() !== '') ? settings.endTime : '17:00';
-
-                const startStr = isSaturday ? satStart : weekStart;
-                const endStr = isSaturday ? satEnd : weekEnd;
-
-                const startMin = timeToMins(startStr);
-                const endMin = timeToMins(endStr);
+                const startMin = timeToMins(dayStartStr);
+                const endMin = timeToMins(dayEndStr);
+                const lunchStartMin = timeToMins(dayLunchStartStr);
+                const lunchEndMin = timeToMins(dayLunchEndStr);
 
                 const displayDate = cursor.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }).toUpperCase();
 
@@ -331,9 +346,10 @@ const patientApp = {
                     html += `<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">`;
 
                     let currentMin = startMin;
-                    while (currentMin + (settings.sessionDuration || 50) <= endMin) {
-                        if (!isSaturday && currentMin >= lunchStart && currentMin < lunchEnd) {
-                            currentMin = lunchEnd;
+                    while (currentMin + sessionDuration <= endMin) {
+                        // Aplica a pausa de almoço apenas se estiver ativa naquele dia da semana
+                        if (hasLunch && currentMin >= lunchStartMin && currentMin < lunchEndMin) {
+                            currentMin = lunchEndMin;
                             continue;
                         }
 
@@ -341,13 +357,16 @@ const patientApp = {
                         const min = (currentMin % 60).toString().padStart(2, '0');
                         const timeStr = `${h}:${min}`;
                         const fullDateTime = `${dateStr}T${timeStr}:00`;
-
+                        
+                        // Transformação em Timestamp para evitar bug de fuso horário
                         const btnTimestamp = new Date(fullDateTime).getTime();
 
                         const isBooked = allAppointments.some(a => {
                             if (!a || !a.date) return false;
+                            
                             const dbTimestamp = new Date(a.date).getTime();
                             const isSameSlot = (dbTimestamp === btnTimestamp) || a.date.includes(`${dateStr}T${timeStr}`);
+                            
                             return isSameSlot && (!a.status || a.status === 'SCHEDULED');
                         });
 
